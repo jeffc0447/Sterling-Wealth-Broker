@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+Disallow: /backend/config/
+Disallow: /backend/uploads/
+
+Sitemap: https://investproasset.com/sitemap.xml

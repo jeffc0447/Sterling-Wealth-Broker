@@ -1,0 +1,29 @@
+# =====================================================================
+# Sterling Wealth Brokerage - Backend Apache .htaccess (investproasset.com)
+# =====================================================================
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteBase /
+
+    # Security: Block direct web access to .env files, database credentials, and git metadata
+    RewriteRule ^(\.env(\..*)?|config/db\.php|config/env\.php|\.git) - [F,L,NC]
+</IfModule>
+
+<FilesMatch "^(\.env(\..*)?|db\.php|env\.php)$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</FilesMatch>
+
+# Security Headers
+<IfModule mod_headers.c>
+    Header set X-Content-Type-Options "nosniff"
+</IfModule>
+
+# Set UTF-8 Default Charset
+AddDefaultCharset UTF-8

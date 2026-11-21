@@ -1,0 +1,143 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --font-heading: 'Cinzel', Georgia, serif;
+    --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    --sat: env(safe-area-inset-top, 0px);
+    --sar: env(safe-area-inset-right, 0px);
+    --sab: env(safe-area-inset-bottom, 0px);
+    --sal: env(safe-area-inset-left, 0px);
+  }
+  
+  html {
+    scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    overflow-x: hidden;
+    width: 100%;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    overflow-x: hidden;
+    width: 100%;
+    min-height: 100vh;
+    min-height: 100dvh;
+    /* iOS Safari safe area insets padding */
+    padding-top: env(safe-area-inset-top, 0);
+    padding-bottom: env(safe-area-inset-bottom, 0);
+    padding-left: env(safe-area-inset-left, 0);
+    padding-right: env(safe-area-inset-right, 0);
+  }
+  
+  h1, h2, h3, .font-display {
+    font-family: var(--font-heading);
+    letter-spacing: -0.015em;
+  }
+
+  /* Prevent automatic iOS font-zoom distortion on input focus */
+  input, select, textarea {
+    font-size: 16px;
+  }
+  @media screen and (min-width: 640px) {
+    input, select, textarea {
+      font-size: inherit;
+    }
+  }
+
+  /* Media & image auto-scaling without horizontal overflow */
+  img, video, canvas, svg {
+    max-width: 100%;
+    height: auto;
+  }
+}
+
+/* Touch target accessibility - minimum 44x44px clickable area on mobile devices */
+.touch-min {
+  min-height: 44px;
+  min-width: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Safe area padding utilities for iPhone notch and Android bottom bars */
+.pt-safe {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.pl-safe {
+  padding-left: env(safe-area-inset-left, 0px);
+}
+.pr-safe {
+  padding-right: env(safe-area-inset-right, 0px);
+}
+
+/* Custom scrollbars for clean financial dashboard */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #090d16;
+}
+::-webkit-scrollbar-thumb {
+  background: #1e293b;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #334155;
+}
+
+/* Hide scrollbar utility */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* ==========================================================================
+   DEVICE-SPECIFIC STANDARD MEDIA QUERIES
+   ========================================================================== */
+
+/* 1. Android Phones & iPhones (320px - 430px) */
+@media screen and (max-width: 430px) {
+  .mobile-tight-padding {
+    padding-left: 0.75rem !important;
+    padding-right: 0.75rem !important;
+  }
+  
+  .mobile-stack {
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+
+  /* Ensure card headings wrap smoothly without word clipping */
+  .mobile-break {
+    word-break: break-word;
+    overflow-wrap: break-word;
+  }
+}
+
+/* 2. Tablets (768px - 1023px) */
+@media screen and (min-width: 768px) and (max-width: 1023px) {
+  .tablet-grid-2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+  
+  .tablet-gap-compact {
+    gap: 1rem !important;
+  }
+}
+
+/* 3. Laptops & Desktops (1024px and above) */
+@media screen and (min-width: 1024px) {
+  .desktop-grid-4 {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  }
+}

@@ -1,0 +1,70 @@
+# =====================================================================
+# Sterling Wealth Brokerage - Root public_html .htaccess for investproasset.com
+#
+# Handles:
+# 1. Enforcing HTTPS & canonical host (https://investproasset.com)
+# 2. Preserving AutoSSL / Let's Encrypt .well-known validation paths
+# 3. Allowing direct PHP API execution under /backend/ or /api/
+# 4. Routing React SPA client-side routes (including /admin & /portal) to index.html
+# 5. Blocking .env files and adding security/caching headers
+# =====================================================================
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteBase /
+
+    # 1. Allow cPanel AutoSSL / Let's Encrypt verification
+    RewriteCond %{REQUEST_URI} ^/\.well-known/ [NC]
+    RewriteRule ^ - [L]
+
+    # 2. Enforce HTTPS and canonical domain (investproasset.com)
+    RewriteCond %{HTTP_HOST} ^www\.investproasset\.com$ [NC,OR]
+    RewriteCond %{HTTPS} off
+    RewriteRule ^(.*)$ https://investproasset.com/$1 [R=301,L]
+
+    # 3. Do not rewrite backend PHP API requests
+    RewriteCond %{REQUEST_URI} ^/backend/ [NC,OR]
+    RewriteCond %{REQUEST_URI} ^/api/ [NC]
+    RewriteRule ^ - [L]
+
+    # 4. Allow existing static files and directories to be served directly
+    RewriteCond %{REQUEST_FILENAME} -f [OR]
+    RewriteCond %{REQUEST_FILENAME} -d
+    RewriteRule ^ - [L]
+
+    # 5. Rewrite all other frontend routes to index.html for React SPA
+    RewriteRule ^ index.html [L]
+</IfModule>
+
+# Security: Block sensitive hidden files (.env, .env.production, .git, etc.)
+<FilesMatch "^(\.env(\..*)?|\.git|\.DS_Store)$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</FilesMatch>
+
+# Security Headers for investproasset.com
+<IfModule mod_headers.c>
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set X-Frame-Options "SAMEORIGIN"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+    Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains" env=HTTPS
+</IfModule>
+
+# Enable Browser Caching
+<IfModule mod_expires.c>
+    ExpiresActive On
+    ExpiresByType text/html "access plus 0 seconds"
+    ExpiresByType text/css "access plus 1 month"
+    ExpiresByType application/javascript "access plus 1 month"
+    ExpiresByType image/jpeg "access plus 1 month"
+    ExpiresByType image/png "access plus 1 month"
+    ExpiresByType image/svg+xml "access plus 1 month"
+    ExpiresByType application/pdf "access plus 1 month"
+</IfModule>
+
+AddDefaultCharset UTF-8
