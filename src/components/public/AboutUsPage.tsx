@@ -838,11 +838,6 @@ export const AboutUsPage: React.FC = () => {
             <div className="pt-4 flex items-center justify-center gap-4 text-xs text-slate-500 flex-wrap">
               <span className="flex items-center gap-1">
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                No Upfront Broker Points
-              </span>
-              <span>·</span>
-              <span className="flex items-center gap-1">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
                 100% Placement SLA Guarantee
               </span>
               <span>·</span>

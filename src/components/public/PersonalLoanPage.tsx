@@ -94,7 +94,7 @@ export const PersonalLoanPage: React.FC = () => {
               </h1>
 
               <p className="text-slate-400 text-base sm:text-lg leading-relaxed">
-                Access fixed-rate unsecured personal credit backed by our premier banking syndicate. No upfront origination points, no early repayment penalties, and an expedited 24-hour turnaround SLA.
+                Access fixed-rate unsecured personal credit backed by our premier banking syndicate, with no early repayment penalties and an expedited 24-hour turnaround SLA.
               </p>
 
               {/* Key Metric Highlights */}

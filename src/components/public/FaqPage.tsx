@@ -96,14 +96,6 @@ export const FaqPage: React.FC = () => {
         'All client portal messages are end-to-end encrypted using client-side AES-256 keys. The chat is staffed by an automated robotic assistant that answers initial queries regarding covenant ratios, document checklists, and vault protocols. After 3–5 queries, the session seamlessly transfers to your assigned underwriter for bespoke advisory.',
     },
     {
-      id: 'faq-9',
-      category: 'BORROWING',
-      categoryLabel: 'Borrowing & Loans',
-      question: 'Are there any upfront broker points or hidden success fees deducted from my loan?',
-      answer:
-        'None. We do not charge predatory upfront points or hidden closing fees. Our model is based on transparent membership subscriptions and institutional placement syndication fees paid by institutional lenders upon successful capital disbursement.',
-    },
-    {
       id: 'faq-10',
       category: 'TIERS',
       categoryLabel: 'Membership & Tiers',

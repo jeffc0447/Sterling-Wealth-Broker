@@ -111,10 +111,6 @@ export const ContactPage: React.FC = () => {
       q: 'What is the Sterling Wealth Placement SLA Guarantee?',
       a: 'We guarantee that our desk will present at least two qualifying institutional bank offers meeting your borrowing parameters within your tier timeframe. If we fail to do so, your membership fee is 100% refunded.',
     },
-    {
-      q: 'Do you charge upfront points on the loan balance?',
-      a: 'No. Traditional brokers often demand 2%–5% upfront retainer points. Sterling Wealth operates on a transparent flat Tiered Membership model, delivering wholesale syndicate rates with zero hidden broker percentages.',
-    },
   ];
 
   return (

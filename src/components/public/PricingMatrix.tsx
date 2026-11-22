@@ -210,7 +210,7 @@ export const PricingMatrix: React.FC<PricingMatrixProps> = ({ onSelectTier, onSe
               Crypto Settlement: BTC · ETH · USDT Tether
             </div>
             <div className="text-slate-400">
-              Escrow Backed · Zero Broker Upfront Fee
+              Escrow Backed · Institutional Syndicate Desk
             </div>
           </div>
         </div>

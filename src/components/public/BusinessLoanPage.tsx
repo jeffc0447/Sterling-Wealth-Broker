@@ -149,8 +149,6 @@ export const BusinessLoanPage: React.FC = () => {
                 </span>
                 <span>·</span>
                 <span>Strict Non-Disclosure Agreements</span>
-                <span>·</span>
-                <span>Zero Upfront Broker Surcharges</span>
               </div>
             </div>
 
