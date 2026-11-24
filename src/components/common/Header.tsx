@@ -109,7 +109,12 @@ export const Header: React.FC = () => {
     setShowLoginModal,
     openRegistrationWithTier,
     isClientAuthenticated,
+    clientLogout,
+    siteBranding,
   } = useBroker();
+
+  const isInClientDashboard = currentView === 'PORTAL';
+  const brandWords = (siteBranding.siteName || 'Sterling Wealth Broker').trim().split(/\s+/);
 
   // Desktop "About Us" dropdown state
   const [isAboutDropdownOpen, setIsAboutDropdownOpen] = useState(false);
@@ -309,22 +314,40 @@ export const Header: React.FC = () => {
 
       {/* Main Navigation Bar */}
       <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16 sm:h-18 gap-2 sm:gap-4">
+        <div className="flex items-center justify-between h-16 sm:h-17 gap-2 sm:gap-4">
           
           {/* Logo (Top Left) */}
           <div 
             onClick={() => handleNavClick('home')} 
-            className="flex items-center gap-2 sm:gap-3 cursor-pointer group shrink-0 min-h-[44px]"
+            className="flex items-center gap-2 sm:gap-2.5 cursor-pointer group shrink-0 min-h-[44px]"
           >
-            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br from-emerald-500/20 via-slate-800 to-slate-900 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shadow-md group-hover:border-emerald-400 transition-colors shrink-0">
-              <Shield className="w-4 h-4 sm:w-5 sm:h-5" />
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br from-emerald-500/20 via-slate-800 to-slate-900 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shadow-md group-hover:border-emerald-400 transition-colors shrink-0 overflow-hidden">
+              {siteBranding.logoUrl ? (
+                <img
+                  src={siteBranding.logoUrl}
+                  alt={siteBranding.siteName}
+                  className="w-full h-full object-contain p-0.5"
+                />
+              ) : (
+                <Shield className="w-4 h-4 sm:w-5 sm:h-5" />
+              )}
             </div>
             <div className="min-w-0">
-              <div className="font-display tracking-wider text-xs xs:text-sm sm:text-base font-bold text-white flex items-center gap-1 truncate">
-                STERLING <span className="text-emerald-400 font-normal">WEALTH</span> <span className="hidden xs:inline">BROKER</span>
+              <div className="font-display tracking-wider text-xs xs:text-sm sm:text-base font-bold text-white flex items-center gap-1 truncate uppercase">
+                {brandWords.length >= 2 ? (
+                  <>
+                    <span>{brandWords[0]}</span>
+                    <span className="text-emerald-400 font-semibold">{brandWords[1]}</span>
+                    {brandWords.length > 2 && (
+                      <span className="hidden xs:inline">{brandWords.slice(2).join(' ')}</span>
+                    )}
+                  </>
+                ) : (
+                  <span>{siteBranding.siteName}</span>
+                )}
               </div>
               <p className="text-[8px] sm:text-[9px] tracking-widest text-slate-400 uppercase font-sans truncate">
-                Institutional Financial Brokerage
+                {siteBranding.siteTagline}
               </p>
             </div>
           </div>
@@ -606,85 +629,119 @@ export const Header: React.FC = () => {
 
           {/* Right Header CTAs (Desktop) & Single Dropdown Toggle (Mobile) */}
           <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-            {/* Desktop Login & Sign Up Dropdown */}
-            <div
-              className="relative hidden lg:block"
-              ref={loginDropdownRef}
-              onMouseEnter={() => setIsLoginDropdownOpen(true)}
-              onMouseLeave={() => setIsLoginDropdownOpen(false)}
-            >
+            {isInClientDashboard ? (
+              /* Client Dashboard Header: Display ONLY Sign Out (no Login / Sign Up) */
               <button
                 type="button"
-                onClick={() => setIsLoginDropdownOpen(!isLoginDropdownOpen)}
-                aria-haspopup="true"
-                aria-expanded={isLoginDropdownOpen}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-medium text-slate-200 hover:text-white hover:bg-slate-800 transition border border-slate-700/80 cursor-pointer min-h-[44px]"
-                title={isClientAuthenticated ? 'Member Portal & Account Options' : 'Login or Sign Up'}
+                onClick={clientLogout}
+                className="hidden lg:inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold bg-slate-900 hover:bg-rose-950/60 text-slate-200 hover:text-rose-300 border border-slate-700/80 hover:border-rose-500/50 transition-all cursor-pointer min-h-[44px] shadow-sm active:scale-95"
+                title="Sign out of your account"
               >
-                <User className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Login</span>
-                <ChevronDown
-                  className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 ${
-                    isLoginDropdownOpen ? 'rotate-180 text-emerald-400' : ''
-                  }`}
-                />
+                <LogOut className="w-4 h-4 text-rose-400" />
+                <span>Sign Out</span>
               </button>
+            ) : isClientAuthenticated ? (
+              /* Authenticated Client browsing Public Pages: Dashboard & Sign Out */
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCurrentView('PORTAL');
+                    setPortalTab('OVERVIEW');
+                  }}
+                  className="hidden lg:inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/40 transition cursor-pointer min-h-[44px]"
+                >
+                  <LayoutDashboard className="w-3.5 h-3.5" />
+                  <span>Client Dashboard</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={clientLogout}
+                  className="hidden lg:inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-slate-900 hover:bg-rose-950/60 text-slate-200 hover:text-rose-300 border border-slate-700/80 hover:border-rose-500/50 transition cursor-pointer min-h-[44px]"
+                >
+                  <LogOut className="w-3.5 h-3.5 text-rose-400" />
+                  <span>Sign Out</span>
+                </button>
+              </>
+            ) : (
+              <>
+                {/* Desktop Login & Sign Up Dropdown */}
+                <div
+                  className="relative hidden lg:block"
+                  ref={loginDropdownRef}
+                  onMouseEnter={() => setIsLoginDropdownOpen(true)}
+                  onMouseLeave={() => setIsLoginDropdownOpen(false)}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setIsLoginDropdownOpen(!isLoginDropdownOpen)}
+                    aria-haspopup="true"
+                    aria-expanded={isLoginDropdownOpen}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-medium text-slate-200 hover:text-white hover:bg-slate-800 transition border border-slate-700/80 cursor-pointer min-h-[44px]"
+                    title="Login or Sign Up"
+                  >
+                    <User className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Login</span>
+                    <ChevronDown
+                      className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 ${
+                        isLoginDropdownOpen ? 'rotate-180 text-emerald-400' : ''
+                      }`}
+                    />
+                  </button>
 
-              {isLoginDropdownOpen && (
-                <div className="absolute right-0 mt-2 w-64 rounded-2xl bg-slate-900/95 backdrop-blur-md border border-slate-700/80 shadow-2xl p-2 z-50 animate-in fade-in zoom-in-95 duration-150">
-                  <div className="px-3 py-2 border-b border-slate-800 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
-                    Client Account Access
-                  </div>
-                  <div className="p-1 space-y-1">
-                    <button
-                      type="button"
-                      onClick={handleLoginAction}
-                      className="w-full text-left p-2.5 rounded-xl transition flex items-start gap-3 hover:bg-slate-800/80 cursor-pointer"
-                    >
-                      <div className="w-8 h-8 rounded-lg bg-slate-800 border border-slate-700 text-emerald-400 flex items-center justify-center shrink-0 mt-0.5">
-                        <Lock className="w-4 h-4" />
+                  {isLoginDropdownOpen && (
+                    <div className="absolute right-0 mt-2 w-64 rounded-2xl bg-slate-900/95 backdrop-blur-md border border-slate-700/80 shadow-2xl p-2 z-50 animate-in fade-in zoom-in-95 duration-150">
+                      <div className="px-3 py-2 border-b border-slate-800 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                        Client Account Access
                       </div>
-                      <div className="min-w-0">
-                        <div className="text-xs font-bold text-white">
-                          {isClientAuthenticated ? 'Open Membership Dashboard' : 'Login'}
-                        </div>
-                        <p className="text-[11px] text-slate-400 mt-0.5 leading-snug">
-                          {isClientAuthenticated
-                            ? 'Return to your active client portal'
-                            : 'Sign in with existing member credentials'}
-                        </p>
-                      </div>
-                    </button>
+                      <div className="p-1 space-y-1">
+                        <button
+                          type="button"
+                          onClick={handleLoginAction}
+                          className="w-full text-left p-2.5 rounded-xl transition flex items-start gap-3 hover:bg-slate-800/80 cursor-pointer"
+                        >
+                          <div className="w-8 h-8 rounded-lg bg-slate-800 border border-slate-700 text-emerald-400 flex items-center justify-center shrink-0 mt-0.5">
+                            <Lock className="w-4 h-4" />
+                          </div>
+                          <div className="min-w-0">
+                            <div className="text-xs font-bold text-white">Login</div>
+                            <p className="text-[11px] text-slate-400 mt-0.5 leading-snug">
+                              Sign in with existing member credentials
+                            </p>
+                          </div>
+                        </button>
 
-                    <button
-                      type="button"
-                      onClick={handleSignUpAction}
-                      className="w-full text-left p-2.5 rounded-xl transition flex items-start gap-3 hover:bg-slate-800/80 cursor-pointer"
-                    >
-                      <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 flex items-center justify-center shrink-0 mt-0.5">
-                        <UserPlus className="w-4 h-4" />
+                        <button
+                          type="button"
+                          onClick={handleSignUpAction}
+                          className="w-full text-left p-2.5 rounded-xl transition flex items-start gap-3 hover:bg-slate-800/80 cursor-pointer"
+                        >
+                          <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 flex items-center justify-center shrink-0 mt-0.5">
+                            <UserPlus className="w-4 h-4" />
+                          </div>
+                          <div className="min-w-0">
+                            <div className="text-xs font-bold text-emerald-400">Sign Up</div>
+                            <p className="text-[11px] text-slate-400 mt-0.5 leading-snug">
+                              Register a new institutional membership
+                            </p>
+                          </div>
+                        </button>
                       </div>
-                      <div className="min-w-0">
-                        <div className="text-xs font-bold text-emerald-400">Sign Up</div>
-                        <p className="text-[11px] text-slate-400 mt-0.5 leading-snug">
-                          Register a new institutional membership
-                        </p>
-                      </div>
-                    </button>
-                  </div>
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
 
-            {/* Desktop Header CTA Button: 'Apply Now' */}
-            <button
-              type="button"
-              onClick={handleApplyNow}
-              className="hidden lg:flex py-2 px-4 rounded-xl text-sm font-bold bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-md shadow-emerald-500/25 transition-all items-center gap-1.5 cursor-pointer active:scale-95 min-h-[44px]"
-            >
-              <span>Apply Now</span>
-              <ArrowRight className="w-4 h-4" />
-            </button>
+                {/* Desktop Header CTA Button: 'Apply Now' */}
+                <button
+                  type="button"
+                  onClick={handleApplyNow}
+                  className="hidden lg:flex py-2 px-4 rounded-xl text-sm font-bold bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-md shadow-emerald-500/25 transition-all items-center gap-1.5 cursor-pointer active:scale-95 min-h-[44px]"
+                >
+                  <span>Apply Now</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              </>
+            )}
 
             {/* Mobile Single Dropdown Menu Toggle Button */}
             <button
@@ -889,69 +946,114 @@ export const Header: React.FC = () => {
                 Contact
               </button>
 
-              {/* Accordion: Login & Sign Up */}
-              <div className="rounded-xl border border-slate-800/80 bg-slate-900/60 overflow-hidden">
-                <button
-                  type="button"
-                  aria-expanded={isMobileLoginAccordionOpen}
-                  onClick={() => setIsMobileLoginAccordionOpen(!isMobileLoginAccordionOpen)}
-                  className="w-full min-h-[44px] text-left py-2.5 px-4 flex items-center justify-between text-sm font-semibold text-white hover:text-emerald-400 active:bg-slate-800 cursor-pointer"
-                >
-                  <span className="flex items-center gap-2.5">
-                    <User className="w-4 h-4 text-emerald-400 shrink-0" />
-                    <span>Login</span>
-                  </span>
-                  <ChevronDown
-                    className={`w-4 h-4 text-slate-400 transition-transform duration-200 shrink-0 ${
-                      isMobileLoginAccordionOpen ? 'rotate-180 text-emerald-400' : ''
-                    }`}
-                  />
-                </button>
-
-                {isMobileLoginAccordionOpen && (
-                  <div className="px-2 sm:px-3 pb-3 pt-1 space-y-1.5 border-t border-slate-800/80 bg-slate-950">
+              {isInClientDashboard ? (
+                /* Client Dashboard Mobile Menu: Display ONLY Sign Out */
+                <div className="pt-2 border-t border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsMobileMenuOpen(false);
+                      clientLogout();
+                    }}
+                    className="w-full min-h-[48px] py-3 rounded-xl bg-rose-950/40 hover:bg-rose-950/70 border border-rose-500/40 text-rose-300 font-bold text-sm transition flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <LogOut className="w-4 h-4 text-rose-400" />
+                    <span>Sign Out</span>
+                  </button>
+                </div>
+              ) : isClientAuthenticated ? (
+                <div className="pt-2 border-t border-slate-800 space-y-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsMobileMenuOpen(false);
+                      setCurrentView('PORTAL');
+                      setPortalTab('OVERVIEW');
+                    }}
+                    className="w-full min-h-[46px] py-2.5 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/40 text-emerald-300 font-bold text-sm transition flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <LayoutDashboard className="w-4 h-4" />
+                    <span>Open Client Dashboard</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsMobileMenuOpen(false);
+                      clientLogout();
+                    }}
+                    className="w-full min-h-[46px] py-2.5 rounded-xl bg-rose-950/40 hover:bg-rose-950/70 border border-rose-500/40 text-rose-300 font-bold text-sm transition flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <LogOut className="w-4 h-4 text-rose-400" />
+                    <span>Sign Out</span>
+                  </button>
+                </div>
+              ) : (
+                <>
+                  {/* Accordion: Login & Sign Up */}
+                  <div className="rounded-xl border border-slate-800/80 bg-slate-900/60 overflow-hidden">
                     <button
                       type="button"
-                      onClick={handleLoginAction}
-                      className="w-full min-h-[44px] text-left p-2.5 rounded-lg text-xs transition flex items-center gap-2.5 text-slate-200 hover:bg-slate-900 cursor-pointer"
+                      aria-expanded={isMobileLoginAccordionOpen}
+                      onClick={() => setIsMobileLoginAccordionOpen(!isMobileLoginAccordionOpen)}
+                      className="w-full min-h-[44px] text-left py-2.5 px-4 flex items-center justify-between text-sm font-semibold text-white hover:text-emerald-400 active:bg-slate-800 cursor-pointer"
                     >
-                      <Lock className="w-4 h-4 text-emerald-400 shrink-0" />
-                      <div>
-                        <span className="font-semibold text-white block">
-                          {isClientAuthenticated ? 'Open Membership Dashboard' : 'Login'}
-                        </span>
-                        <span className="text-[10px] text-slate-400 block">
-                          {isClientAuthenticated ? 'Access your client dashboard' : 'Sign in to your member account'}
-                        </span>
-                      </div>
+                      <span className="flex items-center gap-2.5">
+                        <User className="w-4 h-4 text-emerald-400 shrink-0" />
+                        <span>Login</span>
+                      </span>
+                      <ChevronDown
+                        className={`w-4 h-4 text-slate-400 transition-transform duration-200 shrink-0 ${
+                          isMobileLoginAccordionOpen ? 'rotate-180 text-emerald-400' : ''
+                        }`}
+                      />
                     </button>
 
+                    {isMobileLoginAccordionOpen && (
+                      <div className="px-2 sm:px-3 pb-3 pt-1 space-y-1.5 border-t border-slate-800/80 bg-slate-950">
+                        <button
+                          type="button"
+                          onClick={handleLoginAction}
+                          className="w-full min-h-[44px] text-left p-2.5 rounded-lg text-xs transition flex items-center gap-2.5 text-slate-200 hover:bg-slate-900 cursor-pointer"
+                        >
+                          <Lock className="w-4 h-4 text-emerald-400 shrink-0" />
+                          <div>
+                            <span className="font-semibold text-white block">Login</span>
+                            <span className="text-[10px] text-slate-400 block">
+                              Sign in to your member account
+                            </span>
+                          </div>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={handleSignUpAction}
+                          className="w-full min-h-[44px] text-left p-2.5 rounded-lg text-xs transition flex items-center gap-2.5 text-emerald-400 hover:bg-slate-900 cursor-pointer"
+                        >
+                          <UserPlus className="w-4 h-4 text-emerald-400 shrink-0" />
+                          <div>
+                            <span className="font-semibold text-emerald-400 block">Sign Up</span>
+                            <span className="text-[10px] text-slate-400 block">
+                              Create a new membership account
+                            </span>
+                          </div>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Primary CTA inside single mobile dropdown */}
+                  <div className="pt-2 border-t border-slate-800">
                     <button
                       type="button"
-                      onClick={handleSignUpAction}
-                      className="w-full min-h-[44px] text-left p-2.5 rounded-lg text-xs transition flex items-center gap-2.5 text-emerald-400 hover:bg-slate-900 cursor-pointer"
+                      onClick={handleApplyNow}
+                      className="w-full min-h-[48px] py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 active:bg-emerald-600 text-slate-950 font-bold text-sm shadow-lg shadow-emerald-500/20 transition flex items-center justify-center gap-2 cursor-pointer"
                     >
-                      <UserPlus className="w-4 h-4 text-emerald-400 shrink-0" />
-                      <div>
-                        <span className="font-semibold text-emerald-400 block">Sign Up</span>
-                        <span className="text-[10px] text-slate-400 block">Create a new membership account</span>
-                      </div>
+                      <span>Apply Now</span>
+                      <ArrowRight className="w-4 h-4" />
                     </button>
                   </div>
-                )}
-              </div>
-            </div>
-
-            {/* Primary CTA inside single mobile dropdown */}
-            <div className="pt-2 border-t border-slate-800">
-              <button
-                type="button"
-                onClick={handleApplyNow}
-                className="w-full min-h-[48px] py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 active:bg-emerald-600 text-slate-950 font-bold text-sm shadow-lg shadow-emerald-500/20 transition flex items-center justify-center gap-2 cursor-pointer"
-              >
-                <span>Apply Now</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
+                </>
+              )}
             </div>
 
             {/* Trust Badges in Mobile Drawer */}

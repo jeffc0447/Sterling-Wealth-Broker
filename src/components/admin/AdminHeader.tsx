@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { useBroker, AdminTab } from '../../context/BrokerContext';
 import { ADMIN_PROFILES } from '../../data/initialData';
 import {
@@ -14,6 +14,10 @@ import {
   Users,
   CheckCircle2,
   Database,
+  Image as ImageIcon,
+  Globe,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 
 export const AdminHeader: React.FC = () => {
@@ -24,13 +28,44 @@ export const AdminHeader: React.FC = () => {
     setActiveAdminRole,
     authenticatedAdmin,
     adminLogout,
+    navigateToPublicPage,
     registrationApplications,
   } = useBroker();
-  const currentAdmin = ADMIN_PROFILES.find((a) => a.role === activeAdminRole) || ADMIN_PROFILES[0];
+  const currentAdmin =
+    authenticatedAdmin ||
+    ADMIN_PROFILES.find((a) => a.role === activeAdminRole) ||
+    ADMIN_PROFILES[0];
 
   const pendingRegistrationsCount = registrationApplications.filter(
     (app) => app.status === 'PENDING'
   ).length;
+
+  const tabsScrollRef = useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(true);
+
+  const updateScrollArrows = useCallback(() => {
+    const el = tabsScrollRef.current;
+    if (!el) return;
+    setCanScrollLeft(el.scrollLeft > 4);
+    setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 4);
+  }, []);
+
+  useEffect(() => {
+    updateScrollArrows();
+    window.addEventListener('resize', updateScrollArrows);
+    return () => window.removeEventListener('resize', updateScrollArrows);
+  }, [updateScrollArrows]);
+
+  const scrollTabs = (direction: 'left' | 'right') => {
+    const el = tabsScrollRef.current;
+    if (!el) return;
+    const step = Math.max(260, Math.round(el.clientWidth * 0.55));
+    el.scrollBy({
+      left: direction === 'right' ? step : -step,
+      behavior: 'smooth',
+    });
+  };
 
   const tabs: Array<{ id: AdminTab; label: string; icon: React.ReactNode; roles: string[]; badgeCount?: number }> = [
     {
@@ -75,6 +110,12 @@ export const AdminHeader: React.FC = () => {
       label: 'Package Builder (CMS)',
       icon: <PackagePlus className="w-4 h-4" />,
       roles: ['SUPER_ADMIN'],
+    },
+    {
+      id: 'BRANDING',
+      label: 'Logo & Site Name',
+      icon: <ImageIcon className="w-4 h-4 text-emerald-400" />,
+      roles: ['SUPER_ADMIN', 'CUSTOMER_SUPPORT', 'COMPLIANCE_OFFICER'],
     },
     {
       id: 'HOMEPAGE_CMS',
@@ -162,6 +203,17 @@ export const AdminHeader: React.FC = () => {
               </div>
             </div>
 
+            {/* Return to Public Website */}
+            <button
+              type="button"
+              onClick={() => navigateToPublicPage('home')}
+              className="min-h-[44px] px-3.5 py-2 bg-slate-950 hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-800 rounded-xl text-xs font-semibold transition-colors flex items-center gap-1.5 shadow-sm cursor-pointer active:scale-95"
+              title="View Public Website"
+            >
+              <Globe className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Public Website</span>
+            </button>
+
             {/* Logout Admin Button */}
             <button
               type="button"
@@ -175,41 +227,85 @@ export const AdminHeader: React.FC = () => {
           </div>
         </div>
 
-        {/* Admin Tabs */}
-        <div className="flex items-center gap-2 overflow-x-auto pt-6 border-t border-slate-800/80 mt-4 no-scrollbar">
-          {tabs.map((tab) => {
-            const hasRoleAccess = tab.roles.includes(activeAdminRole);
+        {/* Admin Tabs with Previous / Next Feature Arrows */}
+        <div className="relative flex items-center gap-2 pt-5 border-t border-slate-800/80 mt-4">
+          <button
+            type="button"
+            onClick={() => scrollTabs('left')}
+            disabled={!canScrollLeft}
+            aria-label="Scroll to previous features"
+            title="Previous features"
+            className={`shrink-0 min-h-[40px] min-w-[40px] flex items-center justify-center rounded-lg border transition-all ${
+              canScrollLeft
+                ? 'bg-slate-950 hover:bg-slate-800 text-amber-400 border-amber-500/40 cursor-pointer shadow-sm active:scale-95'
+                : 'bg-slate-950/40 text-slate-600 border-slate-800/60 cursor-not-allowed opacity-50'
+            }`}
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
 
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setAdminTab(tab.id)}
-                className={`flex items-center gap-2 min-h-[40px] py-2 px-3.5 rounded-lg text-xs font-medium transition-all shrink-0 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 ${
-                  adminTab === tab.id
-                    ? 'bg-amber-500 text-slate-950 font-bold shadow-md shadow-amber-500/20'
-                    : hasRoleAccess
-                    ? 'text-slate-400 hover:text-white hover:bg-slate-800/70 active:bg-slate-800'
-                    : 'text-slate-600 hover:text-slate-400 opacity-60'
-                }`}
-              >
-                {tab.icon}
-                <span>{tab.label}</span>
-                {tab.badgeCount !== undefined && tab.badgeCount > 0 && (
-                  <span
-                    className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold ${
-                      adminTab === tab.id
-                        ? 'bg-slate-950 text-amber-300'
-                        : 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
-                    }`}
-                  >
-                    {tab.badgeCount}
-                  </span>
-                )}
-                {!hasRoleAccess && <Lock className="w-3 h-3 text-slate-600" />}
-              </button>
-            );
-          })}
+          <div
+            ref={tabsScrollRef}
+            onScroll={updateScrollArrows}
+            className="flex-1 flex items-center gap-2 overflow-x-auto no-scrollbar scroll-smooth"
+          >
+            {tabs.map((tab) => {
+              const hasRoleAccess = tab.roles.includes(activeAdminRole);
+
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={(e) => {
+                    setAdminTab(tab.id);
+                    e.currentTarget.scrollIntoView({
+                      behavior: 'smooth',
+                      block: 'nearest',
+                      inline: 'nearest',
+                    });
+                  }}
+                  className={`flex items-center gap-2 min-h-[40px] py-2 px-3.5 rounded-lg text-xs font-medium transition-all shrink-0 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 ${
+                    adminTab === tab.id
+                      ? 'bg-amber-500 text-slate-950 font-bold shadow-md shadow-amber-500/20'
+                      : hasRoleAccess
+                      ? 'text-slate-400 hover:text-white hover:bg-slate-800/70 active:bg-slate-800'
+                      : 'text-slate-600 hover:text-slate-400 opacity-60'
+                  }`}
+                >
+                  {tab.icon}
+                  <span>{tab.label}</span>
+                  {tab.badgeCount !== undefined && tab.badgeCount > 0 && (
+                    <span
+                      className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold ${
+                        adminTab === tab.id
+                          ? 'bg-slate-950 text-amber-300'
+                          : 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                      }`}
+                    >
+                      {tab.badgeCount}
+                    </span>
+                  )}
+                  {!hasRoleAccess && <Lock className="w-3 h-3 text-slate-600" />}
+                </button>
+              );
+            })}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => scrollTabs('right')}
+            disabled={!canScrollRight}
+            aria-label="Scroll to next features"
+            title="Next features"
+            className={`shrink-0 min-h-[40px] px-2.5 flex items-center justify-center gap-1 rounded-lg border text-xs font-semibold transition-all ${
+              canScrollRight
+                ? 'bg-slate-950 hover:bg-slate-800 text-amber-400 border-amber-500/40 cursor-pointer shadow-sm active:scale-95'
+                : 'bg-slate-950/40 text-slate-600 border-slate-800/60 cursor-not-allowed opacity-50'
+            }`}
+          >
+            <span className="hidden sm:inline">Next</span>
+            <ChevronRight className="w-4 h-4" />
+          </button>
         </div>
 
       </div>

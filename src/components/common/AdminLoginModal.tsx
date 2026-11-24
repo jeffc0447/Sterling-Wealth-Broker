@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 
 export const AdminLoginModal: React.FC = () => {
-  const { showAdminLoginModal, setShowAdminLoginModal, adminLogin } = useBroker();
+  const { showAdminLoginModal, setShowAdminLoginModal, adminLogin, siteBranding } = useBroker();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -24,12 +24,6 @@ export const AdminLoginModal: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
 
   if (!showAdminLoginModal) return null;
-
-  const handleFillInitialAdmin = () => {
-    setEmail('admin@admin.com');
-    setPassword('Church12@');
-    setErrorMsg(null);
-  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -60,7 +54,7 @@ export const AdminLoginModal: React.FC = () => {
                 Admin Desk Authentication
               </h3>
               <p className="text-xs text-slate-400">
-                Sterling Wealth Broker · System Administration
+                {siteBranding.siteName} · System Administration
               </p>
             </div>
           </div>

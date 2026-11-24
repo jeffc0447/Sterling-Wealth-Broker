@@ -12,10 +12,16 @@ import { AdminSubscribers } from './AdminSubscribers';
 import { AdminRegistrationsQueue } from './AdminRegistrationsQueue';
 import { AdminTierApprovalPanel } from '../flows/AdminTierApprovalPanel';
 import { AdminHomepageCMS } from './AdminHomepageCMS';
+import { AdminBrandingSettings } from './AdminBrandingSettings';
 import { AdminCPanelMySQL } from './AdminCPanelMySQL';
+import { AdminLoginPage } from './AdminLoginPage';
 
 export const AdminPanel: React.FC = () => {
-  const { adminTab } = useBroker();
+  const { adminTab, isAdminAuthenticated } = useBroker();
+
+  if (!isAdminAuthenticated) {
+    return <AdminLoginPage />;
+  }
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col">
@@ -24,6 +30,7 @@ export const AdminPanel: React.FC = () => {
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {adminTab === 'APPROVAL_QUEUE' && <AdminTierApprovalPanel />}
         {adminTab === 'REGISTRATIONS_QUEUE' && <AdminRegistrationsQueue />}
+        {adminTab === 'BRANDING' && <AdminBrandingSettings />}
         {adminTab === 'HOMEPAGE_CMS' && <AdminHomepageCMS />}
         {adminTab === 'ANALYTICS' && <AdminAnalytics />}
         {adminTab === 'SUBSCRIBERS' && <AdminSubscribers />}
@@ -38,3 +45,4 @@ export const AdminPanel: React.FC = () => {
     </div>
   );
 };
+

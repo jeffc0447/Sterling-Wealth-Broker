@@ -12,6 +12,7 @@ import {
   BillingAddress,
   RegistrationApplication,
   HomepageCMSContent,
+  SiteBranding,
 } from '../types';
 
 export const INITIAL_MEMBERSHIP_TIERS: MembershipTier[] = [
@@ -1302,5 +1303,13 @@ export const DEFAULT_HOMEPAGE_CMS_CONTENT: HomepageCMSContent = {
       'If our broker desk does not present at least two qualifying institutional bank offers within your tier SLA, membership fee is 100% refundable.',
   },
 };
+
+export const DEFAULT_SITE_BRANDING: SiteBranding = {
+  siteName: 'Sterling Wealth Broker',
+  siteTagline: 'Institutional Financial Brokerage',
+  logoUrl: null,
+  logoFileName: undefined,
+};
+
 
 

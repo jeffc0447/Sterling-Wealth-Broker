@@ -438,3 +438,12 @@ export interface RegistrationApplication {
   reviewedBy?: string;
   reviewedAt?: string;
 }
+
+export interface SiteBranding {
+  siteName: string;
+  siteTagline: string;
+  logoUrl: string | null;
+  logoFileName?: string;
+  updatedAt?: string;
+}
+

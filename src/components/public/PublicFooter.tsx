@@ -27,7 +27,10 @@ export const PublicFooter: React.FC = () => {
     isClientAuthenticated,
     setShowLoginModal,
     triggerToast,
+    siteBranding,
   } = useBroker();
+
+  const brandWords = (siteBranding.siteName || 'Sterling Wealth Broker').trim().split(/\s+/);
 
   return (
     <footer className="bg-slate-950 border-t border-slate-900 text-slate-400 text-xs">
@@ -134,15 +137,30 @@ export const PublicFooter: React.FC = () => {
               onClick={() => navigateToPublicPage('home')}
               className="flex items-center gap-3 cursor-pointer group inline-flex"
             >
-              <div className="w-9 h-9 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 flex items-center justify-center font-bold">
-                <Shield className="w-5 h-5" />
+              <div className="w-9 h-9 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 flex items-center justify-center font-bold overflow-hidden shrink-0">
+                {siteBranding.logoUrl ? (
+                  <img
+                    src={siteBranding.logoUrl}
+                    alt={siteBranding.siteName}
+                    className="w-full h-full object-contain p-0.5"
+                  />
+                ) : (
+                  <Shield className="w-5 h-5" />
+                )}
               </div>
               <div>
-                <span className="font-display text-base font-bold text-white tracking-wider block">
-                  STERLING <span className="text-emerald-400">WEALTH</span> BROKER
+                <span className="font-display text-sm sm:text-base font-bold text-white tracking-wider block uppercase">
+                  {brandWords.length >= 2 ? (
+                    <>
+                      {brandWords[0]} <span className="text-emerald-400">{brandWords[1]}</span>{' '}
+                      {brandWords.slice(2).join(' ')}
+                    </>
+                  ) : (
+                    siteBranding.siteName
+                  )}
                 </span>
                 <span className="text-[9px] tracking-widest text-slate-400 uppercase font-sans">
-                  Institutional Financial Brokerage
+                  {siteBranding.siteTagline}
                 </span>
               </div>
             </div>
