@@ -10,7 +10,6 @@ import {
   AlertCircle,
   Eye,
   EyeOff,
-  Sparkles,
   ArrowRight,
   ArrowLeft,
   Lock,
@@ -313,48 +312,6 @@ export const RegistrationKYCWizard: React.FC<RegistrationKYCWizardProps> = ({
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       handleFileProcess(e.dataTransfer.files[0]);
     }
-  };
-
-  // Auto-fill demo profile
-  const handleAutoFillDemo = () => {
-    setUsername('janecooper_global');
-    setEmail('jane.cooper@example.com');
-    setPassword('Sterling2026!Secured');
-    setConfirmPassword('Sterling2026!Secured');
-
-    setFirstName('Jane');
-    setMiddleName('Marie');
-    setLastName('Cooper');
-    setGender('Female');
-    setMaritalStatus('Married');
-
-    setStreetAddress('240 Stockton St, Suite 800');
-    setCity('San Francisco');
-    setState('CA');
-    setZipCode('94108');
-    setCountry('United States');
-
-    setEmploymentStatus('Employed');
-    setJobTitle('VP of Global Logistics & Supply');
-    setLoanReason(
-      'Acquisition of warehouse distribution hub and cold-storage facility near Oakland commercial port to scale West Coast supply network.'
-    );
-
-    setDocumentType('INTERNATIONAL_PASSPORT');
-    setUploadedFile({
-      fileName: 'Jane_Cooper_Official_Passport_Scan.pdf',
-      fileSize: '3.4 MB',
-      mimeType: 'application/pdf',
-      previewUrl:
-        'https://images.unsplash.com/photo-1544717305-2782549b5136?auto=format&fit=crop&w=800&q=80',
-    });
-
-    setErrors({});
-    triggerToast(
-      'Demo Form Populated',
-      'All 5 KYC registration sections filled for rapid validation.',
-      'info'
-    );
   };
 
   // Submit complete form
@@ -1095,16 +1052,6 @@ export const RegistrationKYCWizard: React.FC<RegistrationKYCWizardProps> = ({
               </button>
             </span>
           </div>
-
-          <button
-            type="button"
-            onClick={handleAutoFillDemo}
-            className="inline-flex items-center gap-1 text-[11px] font-mono text-amber-400 hover:text-amber-300 px-2 py-1 rounded bg-amber-500/10 border border-amber-500/30 cursor-pointer shrink-0"
-          >
-            <Sparkles className="w-3 h-3" />
-            <span className="hidden xs:inline">Auto-fill Demo KYC</span>
-            <span className="xs:hidden">Demo</span>
-          </button>
         </div>
 
         {/* Modal Header */}

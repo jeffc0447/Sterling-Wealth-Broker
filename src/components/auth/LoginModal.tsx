@@ -153,12 +153,6 @@ export const LoginModal: React.FC = () => {
     }, 450);
   };
 
-  const handleQuickDemoFill = () => {
-    setLoginEmail('alexander.vance@vancestrategic.com');
-    setLoginPassword('Password123!');
-    setError(null);
-  };
-
   const handleOpenFullKYCWizard = () => {
     setShowLoginModal(false);
     setShowRegisterModal(true);
@@ -401,15 +395,6 @@ export const LoginModal: React.FC = () => {
                   <span>2FA Protected</span>
                 </div>
               </div>
-
-              {/* Quick Demo Pre-fill for reviewer convenience */}
-              <button
-                type="button"
-                onClick={handleQuickDemoFill}
-                className="w-full py-1.5 px-3 rounded-lg bg-slate-950 border border-dashed border-slate-700 text-[11px] text-slate-400 hover:text-white hover:border-slate-500 transition cursor-pointer flex items-center justify-center gap-1.5"
-              >
-                <span>⚡ Fill Demo Client (Alexander Vance)</span>
-              </button>
 
               <button
                 type="submit"

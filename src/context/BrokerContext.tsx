@@ -953,7 +953,7 @@ export const BrokerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     triggerToast(
       'Verification Email Dispatched',
-      `6-digit OTP code sent to ${data.email}. (Demo Code: ${initialOtp})`,
+      `6-digit OTP code sent to ${data.email}. (Code: ${initialOtp})`,
       'warning'
     );
 
@@ -996,7 +996,7 @@ export const BrokerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const target = registrationApplications.find((a) => a.id === registrationId);
     triggerToast(
       'New OTP Code Sent',
-      `A fresh code was sent to ${target?.email || 'your email'}. (Demo Code: ${newCode})`,
+      `A fresh code was sent to ${target?.email || 'your email'}. (Code: ${newCode})`,
       'info'
     );
     return newCode;

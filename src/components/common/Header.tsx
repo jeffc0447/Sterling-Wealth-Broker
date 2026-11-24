@@ -7,7 +7,6 @@ import {
   User,
   Building2,
   ExternalLink,
-  RefreshCw,
   LogOut,
   KeyRound,
   CheckCircle2,
@@ -104,7 +103,6 @@ export const Header: React.FC = () => {
     currentUser,
     subscribers,
     tiers,
-    resetAllData,
     isAdminAuthenticated,
     adminLogout,
     setShowAdminLoginModal,
@@ -125,24 +123,50 @@ export const Header: React.FC = () => {
   const [isProductsDropdownOpen, setIsProductsDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Mobile drawer state
+  // Desktop "Login / Sign Up" dropdown state
+  const [isLoginDropdownOpen, setIsLoginDropdownOpen] = useState(false);
+  const loginDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Mobile single dropdown menu state
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isMobileAboutAccordionOpen, setIsMobileAboutAccordionOpen] = useState(false);
   const [isMobileProductsAccordionOpen, setIsMobileProductsAccordionOpen] = useState(false);
+  const [isMobileLoginAccordionOpen, setIsMobileLoginAccordionOpen] = useState(false);
+  const headerRef = useRef<HTMLElement>(null);
 
-  // Close desktop dropdowns on outside click
+  // Close dropdowns on outside click or Escape key
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+      const target = event.target as Node;
+      if (dropdownRef.current && !dropdownRef.current.contains(target)) {
         setIsProductsDropdownOpen(false);
       }
-      if (aboutDropdownRef.current && !aboutDropdownRef.current.contains(event.target as Node)) {
+      if (aboutDropdownRef.current && !aboutDropdownRef.current.contains(target)) {
         setIsAboutDropdownOpen(false);
+        setFocusedAboutIndex(-1);
+      }
+      if (loginDropdownRef.current && !loginDropdownRef.current.contains(target)) {
+        setIsLoginDropdownOpen(false);
+      }
+      if (headerRef.current && !headerRef.current.contains(target)) {
+        setIsMobileMenuOpen(false);
+      }
+    };
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsProductsDropdownOpen(false);
+        setIsAboutDropdownOpen(false);
+        setIsLoginDropdownOpen(false);
+        setIsMobileMenuOpen(false);
         setFocusedAboutIndex(-1);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleEscape);
+    };
   }, []);
 
   const userTier = tiers.find((t) => t.id === currentUser.membershipTierId);
@@ -154,6 +178,7 @@ export const Header: React.FC = () => {
     navigateToPublicPage(page);
     setIsProductsDropdownOpen(false);
     setIsAboutDropdownOpen(false);
+    setIsLoginDropdownOpen(false);
     setIsMobileMenuOpen(false);
   };
 
@@ -214,6 +239,14 @@ export const Header: React.FC = () => {
       publicPage === 'membership-benefits' ||
       publicPage === 'faq');
 
+  const isLoanProductsActive =
+    currentView === 'PUBLIC' &&
+    (publicPage === 'personal-loan' ||
+      publicPage === 'business-loan' ||
+      publicPage === 'financial-instrument' ||
+      publicPage === 'pricing' ||
+      publicPage === 'membership');
+
   const handleAboutItemClick = (page: PublicPage) => {
     setIsAboutDropdownOpen(false);
     setIsMobileMenuOpen(false);
@@ -226,11 +259,29 @@ export const Header: React.FC = () => {
 
   const handleApplyNow = () => {
     openRegistrationWithTier('gold');
+    setIsLoginDropdownOpen(false);
+    setIsMobileMenuOpen(false);
+  };
+
+  const handleLoginAction = () => {
+    if (isClientAuthenticated) {
+      setCurrentView('PORTAL');
+      setPortalTab('OVERVIEW');
+    } else {
+      setShowLoginModal(true);
+    }
+    setIsLoginDropdownOpen(false);
+    setIsMobileMenuOpen(false);
+  };
+
+  const handleSignUpAction = () => {
+    openRegistrationWithTier('gold');
+    setIsLoginDropdownOpen(false);
     setIsMobileMenuOpen(false);
   };
 
   return (
-    <header className="sticky top-0 z-40 bg-slate-950/95 backdrop-blur-md border-b border-slate-800 shadow-md">
+    <header ref={headerRef} className="sticky top-0 z-40 bg-slate-950/95 backdrop-blur-md border-b border-slate-800 shadow-md">
       {/* Top Security & Regulatory Trust Bar */}
       <div className="bg-slate-900 border-b border-slate-800/80 px-4 py-1 text-xs text-slate-400">
         <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
@@ -252,22 +303,6 @@ export const Header: React.FC = () => {
               <Star className="w-3 h-3 fill-amber-400" />
               Trustpilot 4.9/5 · BBB A+ Rating
             </span>
-          </div>
-
-          {/* Quick Demo Reset Control Right */}
-          <div className="flex items-center gap-4 text-[11px] shrink-0">
-            <button
-              onClick={() => {
-                if (window.confirm('Reset all demo state back to default initial data?')) {
-                  resetAllData();
-                }
-              }}
-              title="Reset state to initial sample data"
-              className="flex items-center gap-1 text-slate-400 hover:text-slate-200 transition-colors cursor-pointer"
-            >
-              <RefreshCw className="w-3 h-3" />
-              <span>Reset</span>
-            </button>
           </div>
         </div>
       </div>
@@ -414,19 +449,22 @@ export const Header: React.FC = () => {
               )}
             </div>
 
-            {/* 3. Loan Products (Dropdown Menu) */}
-            <div className="relative" ref={dropdownRef}>
+            {/* 3. Loan Products (Dropdown Menu incl. Membership Tiers) */}
+            <div
+              className="relative"
+              ref={dropdownRef}
+              onMouseEnter={() => setIsProductsDropdownOpen(true)}
+              onMouseLeave={() => setIsProductsDropdownOpen(false)}
+            >
               <button
+                type="button"
                 onClick={() => setIsProductsDropdownOpen(!isProductsDropdownOpen)}
-                onMouseEnter={() => setIsProductsDropdownOpen(true)}
                 className={`flex items-center gap-1.5 transition-colors py-1 cursor-pointer ${
-                  currentView === 'PUBLIC' &&
-                  (publicPage === 'personal-loan' ||
-                    publicPage === 'business-loan' ||
-                    publicPage === 'financial-instrument')
+                  isLoanProductsActive
                     ? 'text-emerald-400 font-semibold border-b-2 border-emerald-400'
                     : 'text-slate-300 hover:text-white'
                 }`}
+                aria-haspopup="true"
                 aria-expanded={isProductsDropdownOpen}
               >
                 <span>Loan Products</span>
@@ -440,25 +478,25 @@ export const Header: React.FC = () => {
               {/* Dropdown Floating Menu */}
               {isProductsDropdownOpen && (
                 <div
-                  onMouseLeave={() => setIsProductsDropdownOpen(false)}
-                  className="absolute left-0 mt-2 w-80 rounded-2xl bg-slate-900 border border-slate-700/80 shadow-2xl p-2 z-50 animate-in fade-in zoom-in-95 duration-150"
+                  className="absolute left-0 mt-2 w-80 rounded-2xl bg-slate-900/95 backdrop-blur-md border border-slate-700/80 shadow-2xl p-2 z-50 animate-in fade-in zoom-in-95 duration-150"
                 >
                   <div className="px-3 py-2 border-b border-slate-800 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
-                    Institutional Debt & Liquidity Catalog
+                    Institutional Debt &amp; Membership Catalog
                   </div>
 
                   <div className="p-1 space-y-1">
                     {/* Personal Loan */}
                     <button
+                      type="button"
                       onClick={() => handleNavClick('personal-loan')}
-                      className={`w-full text-left p-2.5 rounded-xl transition flex items-start gap-3 hover:bg-slate-800/80 ${
-                        publicPage === 'personal-loan' ? 'bg-slate-800 border border-emerald-500/30' : ''
+                      className={`w-full text-left p-2.5 rounded-xl transition flex items-start gap-3 hover:bg-slate-800/80 cursor-pointer ${
+                        publicPage === 'personal-loan' ? 'bg-slate-800 border border-emerald-500/30' : 'border border-transparent'
                       }`}
                     >
                       <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 flex items-center justify-center shrink-0 mt-0.5">
                         <User className="w-4 h-4" />
                       </div>
-                      <div>
+                      <div className="flex-1 min-w-0">
                         <div className="text-xs font-bold text-white flex items-center justify-between">
                           <span>Personal Loan</span>
                           <span className="text-[10px] text-emerald-400 font-mono">Up to $100k</span>
@@ -471,15 +509,16 @@ export const Header: React.FC = () => {
 
                     {/* Business Loan */}
                     <button
+                      type="button"
                       onClick={() => handleNavClick('business-loan')}
-                      className={`w-full text-left p-2.5 rounded-xl transition flex items-start gap-3 hover:bg-slate-800/80 ${
-                        publicPage === 'business-loan' ? 'bg-slate-800 border border-emerald-500/30' : ''
+                      className={`w-full text-left p-2.5 rounded-xl transition flex items-start gap-3 hover:bg-slate-800/80 cursor-pointer ${
+                        publicPage === 'business-loan' ? 'bg-slate-800 border border-emerald-500/30' : 'border border-transparent'
                       }`}
                     >
                       <div className="w-8 h-8 rounded-lg bg-indigo-500/10 border border-indigo-500/30 text-indigo-400 flex items-center justify-center shrink-0 mt-0.5">
                         <Building2 className="w-4 h-4" />
                       </div>
-                      <div>
+                      <div className="flex-1 min-w-0">
                         <div className="text-xs font-bold text-white flex items-center justify-between">
                           <span>Business Loan</span>
                           <span className="text-[10px] text-indigo-400 font-mono">Up to $2.5M+</span>
@@ -492,15 +531,16 @@ export const Header: React.FC = () => {
 
                     {/* Financial Instrument */}
                     <button
+                      type="button"
                       onClick={() => handleNavClick('financial-instrument')}
-                      className={`w-full text-left p-2.5 rounded-xl transition flex items-start gap-3 hover:bg-slate-800/80 ${
-                        publicPage === 'financial-instrument' ? 'bg-slate-800 border border-amber-500/30' : ''
+                      className={`w-full text-left p-2.5 rounded-xl transition flex items-start gap-3 hover:bg-slate-800/80 cursor-pointer ${
+                        publicPage === 'financial-instrument' ? 'bg-slate-800 border border-amber-500/30' : 'border border-transparent'
                       }`}
                     >
                       <div className="w-8 h-8 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-400 flex items-center justify-center shrink-0 mt-0.5">
                         <Coins className="w-4 h-4" />
                       </div>
-                      <div>
+                      <div className="flex-1 min-w-0">
                         <div className="text-xs font-bold text-white flex items-center justify-between">
                           <span>Financial Instrument</span>
                           <span className="text-[10px] text-amber-400 font-mono">$15M+ Limit</span>
@@ -510,41 +550,49 @@ export const Header: React.FC = () => {
                         </p>
                       </div>
                     </button>
+
+                    {/* Membership Tiers (moved under Loan Products) */}
+                    <button
+                      type="button"
+                      onClick={() => handleNavClick('pricing')}
+                      className={`w-full text-left p-2.5 rounded-xl transition flex items-start gap-3 hover:bg-slate-800/80 cursor-pointer ${
+                        publicPage === 'pricing' || publicPage === 'membership'
+                          ? 'bg-slate-800 border border-emerald-500/30'
+                          : 'border border-transparent'
+                      }`}
+                    >
+                      <div className="w-8 h-8 rounded-lg bg-teal-500/10 border border-teal-500/30 text-teal-400 flex items-center justify-center shrink-0 mt-0.5">
+                        <ShieldCheck className="w-4 h-4" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs font-bold text-white flex items-center justify-between">
+                          <span>Membership Tiers</span>
+                          <span className="text-[10px] text-teal-400 font-mono">Tier 1 – 4</span>
+                        </div>
+                        <p className="text-[11px] text-slate-400 mt-0.5 leading-snug">
+                          Silver, Gold, Platinum &amp; Diamond borrowing limits and underwriting SLAs.
+                        </p>
+                      </div>
+                    </button>
                   </div>
 
                   <div className="pt-2 mt-1 border-t border-slate-800 px-3 py-1.5 flex items-center justify-between text-[11px] text-slate-400">
                     <span>Guaranteed SLA Turnaround</span>
                     <button
-                      onClick={() => {
-                        handleNavClick('home');
-                        setTimeout(() => {
-                          const el = document.getElementById('pricing-matrix');
-                          el?.scrollIntoView({ behavior: 'smooth' });
-                        }, 100);
-                      }}
-                      className="text-emerald-400 hover:text-emerald-300 font-semibold"
+                      type="button"
+                      onClick={() => handleNavClick('pricing')}
+                      className="text-emerald-400 hover:text-emerald-300 font-semibold cursor-pointer"
                     >
-                      View Tiers →
+                      Compare Tiers →
                     </button>
                   </div>
                 </div>
               )}
             </div>
 
-            {/* 4. Membership Tiers */}
+            {/* 4. Contact */}
             <button
-              onClick={() => handleNavClick('pricing')}
-              className={`transition-colors py-1 cursor-pointer flex items-center gap-1.5 ${
-                currentView === 'PUBLIC' && (publicPage === 'pricing' || publicPage === 'membership')
-                  ? 'text-emerald-400 font-semibold border-b-2 border-emerald-400'
-                  : 'text-slate-300 hover:text-white'
-              }`}
-            >
-              <span>Membership Tiers</span>
-            </button>
-
-            {/* 5. Contact */}
-            <button
+              type="button"
               onClick={() => handleNavClick('contact')}
               className={`transition-colors py-1 cursor-pointer ${
                 currentView === 'PUBLIC' && publicPage === 'contact'
@@ -556,68 +604,121 @@ export const Header: React.FC = () => {
             </button>
           </nav>
 
-          {/* Right Header CTAs & Workspace Shortcuts */}
+          {/* Right Header CTAs (Desktop) & Single Dropdown Toggle (Mobile) */}
           <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-            {/* Login Access Button */}
-            <button
-              type="button"
-              onClick={() => {
-                if (isClientAuthenticated) {
-                  setCurrentView('PORTAL');
-                  setPortalTab('OVERVIEW');
-                } else {
-                  setShowLoginModal(true);
-                }
-              }}
-              className="hidden sm:inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-medium text-slate-300 hover:text-white hover:bg-slate-800 transition border border-slate-700/80 cursor-pointer min-h-[44px]"
-              title={isClientAuthenticated ? "Open membership dashboard" : "Log in to your account"}
+            {/* Desktop Login & Sign Up Dropdown */}
+            <div
+              className="relative hidden lg:block"
+              ref={loginDropdownRef}
+              onMouseEnter={() => setIsLoginDropdownOpen(true)}
+              onMouseLeave={() => setIsLoginDropdownOpen(false)}
             >
-              <User className="w-3.5 h-3.5 text-slate-400" />
-              <span>Login</span>
-            </button>
+              <button
+                type="button"
+                onClick={() => setIsLoginDropdownOpen(!isLoginDropdownOpen)}
+                aria-haspopup="true"
+                aria-expanded={isLoginDropdownOpen}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-medium text-slate-200 hover:text-white hover:bg-slate-800 transition border border-slate-700/80 cursor-pointer min-h-[44px]"
+                title={isClientAuthenticated ? 'Member Portal & Account Options' : 'Login or Sign Up'}
+              >
+                <User className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Login</span>
+                <ChevronDown
+                  className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 ${
+                    isLoginDropdownOpen ? 'rotate-180 text-emerald-400' : ''
+                  }`}
+                />
+              </button>
 
-            {/* Header Sign Up CTA */}
-            <button
-              type="button"
-              onClick={() => openRegistrationWithTier('gold')}
-              className="hidden md:inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 transition border border-emerald-500/30 cursor-pointer min-h-[44px]"
-            >
-              <UserPlus className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Sign Up</span>
-            </button>
+              {isLoginDropdownOpen && (
+                <div className="absolute right-0 mt-2 w-64 rounded-2xl bg-slate-900/95 backdrop-blur-md border border-slate-700/80 shadow-2xl p-2 z-50 animate-in fade-in zoom-in-95 duration-150">
+                  <div className="px-3 py-2 border-b border-slate-800 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                    Client Account Access
+                  </div>
+                  <div className="p-1 space-y-1">
+                    <button
+                      type="button"
+                      onClick={handleLoginAction}
+                      className="w-full text-left p-2.5 rounded-xl transition flex items-start gap-3 hover:bg-slate-800/80 cursor-pointer"
+                    >
+                      <div className="w-8 h-8 rounded-lg bg-slate-800 border border-slate-700 text-emerald-400 flex items-center justify-center shrink-0 mt-0.5">
+                        <Lock className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-xs font-bold text-white">
+                          {isClientAuthenticated ? 'Open Membership Dashboard' : 'Login'}
+                        </div>
+                        <p className="text-[11px] text-slate-400 mt-0.5 leading-snug">
+                          {isClientAuthenticated
+                            ? 'Return to your active client portal'
+                            : 'Sign in with existing member credentials'}
+                        </p>
+                      </div>
+                    </button>
 
-            {/* Header CTA Button: 'Apply Now' */}
+                    <button
+                      type="button"
+                      onClick={handleSignUpAction}
+                      className="w-full text-left p-2.5 rounded-xl transition flex items-start gap-3 hover:bg-slate-800/80 cursor-pointer"
+                    >
+                      <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 flex items-center justify-center shrink-0 mt-0.5">
+                        <UserPlus className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-xs font-bold text-emerald-400">Sign Up</div>
+                        <p className="text-[11px] text-slate-400 mt-0.5 leading-snug">
+                          Register a new institutional membership
+                        </p>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Desktop Header CTA Button: 'Apply Now' */}
             <button
               type="button"
               onClick={handleApplyNow}
-              className="py-2 px-3.5 sm:px-4 rounded-xl text-xs sm:text-sm font-bold bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-md shadow-emerald-500/25 transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 min-h-[44px]"
+              className="hidden lg:flex py-2 px-4 rounded-xl text-sm font-bold bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-md shadow-emerald-500/25 transition-all items-center gap-1.5 cursor-pointer active:scale-95 min-h-[44px]"
             >
               <span>Apply Now</span>
               <ArrowRight className="w-4 h-4" />
             </button>
 
-            {/* Mobile Hamburger Toggle Button (44x44px touch target) */}
+            {/* Mobile Single Dropdown Menu Toggle Button */}
             <button
               type="button"
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-              className="lg:hidden min-w-[44px] min-h-[44px] flex items-center justify-center rounded-xl text-slate-300 hover:text-white hover:bg-slate-800 transition focus:outline-none focus:ring-2 focus:ring-emerald-500/50 cursor-pointer"
+              className="lg:hidden min-w-[44px] min-h-[44px] px-3 flex items-center justify-center gap-1.5 rounded-xl text-slate-200 hover:text-white bg-slate-900/90 hover:bg-slate-800 border border-slate-700/80 transition focus:outline-none focus:ring-2 focus:ring-emerald-500/50 cursor-pointer"
               aria-label={isMobileMenuOpen ? 'Close Navigation Menu' : 'Open Navigation Menu'}
               aria-expanded={isMobileMenuOpen}
             >
-              {isMobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+              {isMobileMenuOpen ? (
+                <X className="w-5 h-5 text-emerald-400" />
+              ) : (
+                <Menu className="w-5 h-5 text-emerald-400" />
+              )}
+              <span className="text-xs font-semibold">Menu</span>
+              <ChevronDown
+                className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 ${
+                  isMobileMenuOpen ? 'rotate-180 text-emerald-400' : ''
+                }`}
+              />
             </button>
           </div>
 
         </div>
       </div>
 
-      {/* Mobile Drawer Menu with Dynamic Viewport Height & Safe-Area Padding */}
+      {/* Mobile Single Dropdown Menu (All header features accessible from one dropdown) */}
       {isMobileMenuOpen && (
-        <div className="lg:hidden fixed inset-x-0 top-[4.5rem] sm:top-[5rem] bottom-0 h-[calc(100dvh-4.5rem)] sm:h-[calc(100dvh-5rem)] bg-slate-950/98 backdrop-blur-xl border-t border-slate-800 z-50 overflow-y-auto pb-safe animate-in slide-in-from-top-4 duration-200">
-          <div className="px-4 sm:px-6 py-5 space-y-4 max-w-lg mx-auto">
-            {/* Mobile Nav Links */}
+        <div className="lg:hidden absolute inset-x-0 top-full max-h-[calc(100dvh-5.5rem)] bg-slate-950/98 backdrop-blur-xl border-b border-slate-800 shadow-2xl z-50 overflow-y-auto pb-safe animate-in fade-in slide-in-from-top-2 duration-200">
+          <div className="px-4 sm:px-6 py-4 space-y-2.5 max-w-lg mx-auto">
+            {/* Nav Links */}
             <div className="space-y-1.5">
               <button
+                type="button"
                 onClick={() => handleNavClick('home')}
                 className={`w-full min-h-[44px] text-left py-2.5 px-4 rounded-xl text-sm font-semibold transition flex items-center cursor-pointer ${
                   publicPage === 'home' && currentView === 'PUBLIC'
@@ -657,6 +758,7 @@ export const Header: React.FC = () => {
                       return (
                         <button
                           key={item.id}
+                          type="button"
                           onClick={() => handleAboutItemClick(item.page)}
                           className={`w-full min-h-[44px] text-left p-2.5 rounded-lg text-xs transition flex items-center justify-between cursor-pointer ${
                             isItemActive
@@ -679,13 +781,15 @@ export const Header: React.FC = () => {
                 )}
               </div>
 
-              {/* Accordion: Loan Products */}
+              {/* Accordion: Loan Products (includes Membership Tiers) */}
               <div className="rounded-xl border border-slate-800/80 bg-slate-900/60 overflow-hidden">
                 <button
                   type="button"
                   aria-expanded={isMobileProductsAccordionOpen}
                   onClick={() => setIsMobileProductsAccordionOpen(!isMobileProductsAccordionOpen)}
-                  className="w-full min-h-[44px] text-left py-2.5 px-4 flex items-center justify-between text-sm font-semibold text-white hover:text-emerald-400 active:bg-slate-800 cursor-pointer"
+                  className={`w-full min-h-[44px] text-left py-2.5 px-4 flex items-center justify-between text-sm font-semibold transition cursor-pointer ${
+                    isLoanProductsActive ? 'text-emerald-400 bg-slate-900/90' : 'text-white hover:text-emerald-400 active:bg-slate-800'
+                  }`}
                 >
                   <span className="flex items-center gap-2.5">
                     <Layers className="w-4 h-4 text-emerald-400 shrink-0" />
@@ -701,6 +805,7 @@ export const Header: React.FC = () => {
                 {isMobileProductsAccordionOpen && (
                   <div className="px-2 sm:px-3 pb-3 pt-1 space-y-1 border-t border-slate-800/80 bg-slate-950">
                     <button
+                      type="button"
                       onClick={() => handleNavClick('personal-loan')}
                       className={`w-full min-h-[44px] text-left p-2.5 rounded-lg text-xs transition flex items-center justify-between cursor-pointer ${
                         publicPage === 'personal-loan' ? 'bg-slate-800 text-emerald-400 font-semibold' : 'text-slate-300 hover:bg-slate-900'
@@ -717,6 +822,7 @@ export const Header: React.FC = () => {
                     </button>
 
                     <button
+                      type="button"
                       onClick={() => handleNavClick('business-loan')}
                       className={`w-full min-h-[44px] text-left p-2.5 rounded-lg text-xs transition flex items-center justify-between cursor-pointer ${
                         publicPage === 'business-loan' ? 'bg-slate-800 text-indigo-400 font-semibold' : 'text-slate-300 hover:bg-slate-900'
@@ -726,13 +832,14 @@ export const Header: React.FC = () => {
                         <Building2 className="w-4 h-4 text-indigo-400 shrink-0" />
                         <div>
                           <span className="font-medium text-white block">Business Loan</span>
-                          <span className="text-[10px] text-slate-400 block">Revolving credit & mortgage</span>
+                          <span className="text-[10px] text-slate-400 block">Revolving credit &amp; mortgage</span>
                         </div>
                       </div>
                       <span className="text-[10px] text-indigo-400 font-mono bg-indigo-500/10 px-2 py-0.5 rounded shrink-0">$50k–$2.5M</span>
                     </button>
 
                     <button
+                      type="button"
                       onClick={() => handleNavClick('financial-instrument')}
                       className={`w-full min-h-[44px] text-left p-2.5 rounded-lg text-xs transition flex items-center justify-between cursor-pointer ${
                         publicPage === 'financial-instrument' ? 'bg-slate-800 text-amber-400 font-semibold' : 'text-slate-300 hover:bg-slate-900'
@@ -747,23 +854,31 @@ export const Header: React.FC = () => {
                       </div>
                       <span className="text-[10px] text-amber-400 font-mono bg-amber-500/10 px-2 py-0.5 rounded shrink-0">$15M+</span>
                     </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleNavClick('pricing')}
+                      className={`w-full min-h-[44px] text-left p-2.5 rounded-lg text-xs transition flex items-center justify-between cursor-pointer ${
+                        publicPage === 'pricing' || publicPage === 'membership'
+                          ? 'bg-slate-800 text-teal-400 font-semibold'
+                          : 'text-slate-300 hover:bg-slate-900'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <ShieldCheck className="w-4 h-4 text-teal-400 shrink-0" />
+                        <div>
+                          <span className="font-medium text-white block">Membership Tiers</span>
+                          <span className="text-[10px] text-slate-400 block">Silver, Gold, Platinum &amp; Diamond</span>
+                        </div>
+                      </div>
+                      <span className="text-[10px] text-teal-400 font-mono bg-teal-500/10 px-2 py-0.5 rounded shrink-0">Tier 1–4</span>
+                    </button>
                   </div>
                 )}
               </div>
 
               <button
-                onClick={() => handleNavClick('pricing')}
-                className={`w-full min-h-[44px] text-left py-2.5 px-4 rounded-xl text-sm font-semibold transition flex items-center justify-between cursor-pointer ${
-                  (publicPage === 'pricing' || publicPage === 'membership') && currentView === 'PUBLIC'
-                    ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
-                    : 'text-slate-200 hover:bg-slate-900 active:bg-slate-800'
-                }`}
-              >
-                <span>Membership Tiers</span>
-                <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-mono">/pricing</span>
-              </button>
-
-              <button
+                type="button"
                 onClick={() => handleNavClick('contact')}
                 className={`w-full min-h-[44px] text-left py-2.5 px-4 rounded-xl text-sm font-semibold transition flex items-center cursor-pointer ${
                   publicPage === 'contact' && currentView === 'PUBLIC'
@@ -773,33 +888,69 @@ export const Header: React.FC = () => {
               >
                 Contact
               </button>
+
+              {/* Accordion: Login & Sign Up */}
+              <div className="rounded-xl border border-slate-800/80 bg-slate-900/60 overflow-hidden">
+                <button
+                  type="button"
+                  aria-expanded={isMobileLoginAccordionOpen}
+                  onClick={() => setIsMobileLoginAccordionOpen(!isMobileLoginAccordionOpen)}
+                  className="w-full min-h-[44px] text-left py-2.5 px-4 flex items-center justify-between text-sm font-semibold text-white hover:text-emerald-400 active:bg-slate-800 cursor-pointer"
+                >
+                  <span className="flex items-center gap-2.5">
+                    <User className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span>Login</span>
+                  </span>
+                  <ChevronDown
+                    className={`w-4 h-4 text-slate-400 transition-transform duration-200 shrink-0 ${
+                      isMobileLoginAccordionOpen ? 'rotate-180 text-emerald-400' : ''
+                    }`}
+                  />
+                </button>
+
+                {isMobileLoginAccordionOpen && (
+                  <div className="px-2 sm:px-3 pb-3 pt-1 space-y-1.5 border-t border-slate-800/80 bg-slate-950">
+                    <button
+                      type="button"
+                      onClick={handleLoginAction}
+                      className="w-full min-h-[44px] text-left p-2.5 rounded-lg text-xs transition flex items-center gap-2.5 text-slate-200 hover:bg-slate-900 cursor-pointer"
+                    >
+                      <Lock className="w-4 h-4 text-emerald-400 shrink-0" />
+                      <div>
+                        <span className="font-semibold text-white block">
+                          {isClientAuthenticated ? 'Open Membership Dashboard' : 'Login'}
+                        </span>
+                        <span className="text-[10px] text-slate-400 block">
+                          {isClientAuthenticated ? 'Access your client dashboard' : 'Sign in to your member account'}
+                        </span>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleSignUpAction}
+                      className="w-full min-h-[44px] text-left p-2.5 rounded-lg text-xs transition flex items-center gap-2.5 text-emerald-400 hover:bg-slate-900 cursor-pointer"
+                    >
+                      <UserPlus className="w-4 h-4 text-emerald-400 shrink-0" />
+                      <div>
+                        <span className="font-semibold text-emerald-400 block">Sign Up</span>
+                        <span className="text-[10px] text-slate-400 block">Create a new membership account</span>
+                      </div>
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
 
-            {/* Mobile CTAs with min 44px tap heights */}
-            <div className="pt-2 space-y-2.5 border-t border-slate-800">
+            {/* Primary CTA inside single mobile dropdown */}
+            <div className="pt-2 border-t border-slate-800">
               <button
+                type="button"
                 onClick={handleApplyNow}
                 className="w-full min-h-[48px] py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 active:bg-emerald-600 text-slate-950 font-bold text-sm shadow-lg shadow-emerald-500/20 transition flex items-center justify-center gap-2 cursor-pointer"
               >
-                <UserPlus className="w-4 h-4" />
-                <span>Sign Up / Register Membership</span>
+                <span>Apply Now</span>
                 <ArrowRight className="w-4 h-4" />
-              </button>
-
-              <button
-                onClick={() => {
-                  if (isClientAuthenticated) {
-                    setCurrentView('PORTAL');
-                    setPortalTab('OVERVIEW');
-                  } else {
-                    setShowLoginModal(true);
-                  }
-                  setIsMobileMenuOpen(false);
-                }}
-                className="w-full min-h-[44px] py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 active:bg-slate-750 text-slate-200 border border-slate-700/80 font-semibold text-xs transition flex items-center justify-center gap-2 cursor-pointer"
-              >
-                <User className="w-3.5 h-3.5 text-slate-400" />
-                <span>Client & Member Login</span>
               </button>
             </div>
 
