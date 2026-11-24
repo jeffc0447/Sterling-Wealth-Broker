@@ -19,8 +19,8 @@ CREATE TABLE IF NOT EXISTS `users` (
   `phone` VARCHAR(50) DEFAULT NULL,
   `company` VARCHAR(150) DEFAULT NULL,
   `password_hash` VARCHAR(255) NOT NULL,
-  `membership_tier_id` ENUM('silver', 'gold', 'platinum', 'diamond') NOT NULL DEFAULT 'gold',
-  `membership_status` ENUM('ACTIVE', 'EXPIRED', 'RENEWAL_DUE') NOT NULL DEFAULT 'ACTIVE',
+  `membership_tier_id` ENUM('silver', 'gold', 'platinum', 'diamond') DEFAULT NULL,
+  `membership_status` ENUM('UNASSIGNED', 'PENDING_REVIEW', 'ACTIVE', 'EXPIRED', 'RENEWAL_DUE') NOT NULL DEFAULT 'UNASSIGNED',
   `member_since` VARCHAR(50) DEFAULT '2024-03-15',
   `renewal_date` VARCHAR(50) DEFAULT '2027-01-15',
   `kyc_status` ENUM('VERIFIED', 'IN_REVIEW', 'ACTION_REQUIRED') NOT NULL DEFAULT 'VERIFIED',
@@ -117,7 +117,7 @@ CREATE TABLE IF NOT EXISTS `loan_applications` (
   `assigned_broker` VARCHAR(150) DEFAULT 'Marcus Vance',
   `submitted_at` VARCHAR(50) NOT NULL,
   `last_updated` VARCHAR(50) NOT NULL,
-  `tier_at_submission` VARCHAR(32) NOT NULL DEFAULT 'gold',
+  `tier_at_submission` VARCHAR(32) NOT NULL DEFAULT 'unassigned',
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `idx_loan_user` (`user_id`),
@@ -204,8 +204,8 @@ CREATE TABLE IF NOT EXISTS `membership_subscribers` (
   `phone` VARCHAR(50) DEFAULT NULL,
   `company` VARCHAR(150) DEFAULT NULL,
   `request_id` VARCHAR(64) DEFAULT NULL,
-  `membership_tier_id` VARCHAR(32) NOT NULL,
-  `membership_tier_name` VARCHAR(100) NOT NULL,
+  `membership_tier_id` VARCHAR(32) DEFAULT NULL,
+  `membership_tier_name` VARCHAR(100) NOT NULL DEFAULT 'No Active Tier',
   `requested_tier_id` VARCHAR(32) DEFAULT NULL,
   `requested_tier_name` VARCHAR(100) DEFAULT NULL,
   `payment_status` ENUM('ACTIVE', 'PENDING', 'PAST_DUE', 'CANCELLED') NOT NULL DEFAULT 'PENDING',
@@ -237,11 +237,12 @@ CREATE TABLE IF NOT EXISTS `membership_subscribers` (
 -- ---------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS `registration_applications` (
   `id` VARCHAR(64) NOT NULL,
+  `user_id` VARCHAR(64) DEFAULT NULL,
   `full_name` VARCHAR(150) NOT NULL,
   `email` VARCHAR(191) NOT NULL,
   `phone` VARCHAR(50) NOT NULL,
   `company` VARCHAR(150) DEFAULT NULL,
-  `selected_tier` VARCHAR(32) NOT NULL,
+  `selected_tier` VARCHAR(32) DEFAULT NULL,
   `desired_amount` DECIMAL(15, 2) NOT NULL,
   `loan_purpose` TEXT NOT NULL,
   `credit_score` VARCHAR(50) NOT NULL,
@@ -249,7 +250,9 @@ CREATE TABLE IF NOT EXISTS `registration_applications` (
   `status` ENUM('PENDING_REVIEW', 'APPROVED_READY_FOR_PAYMENT', 'REJECTED') NOT NULL DEFAULT 'PENDING_REVIEW',
   `notes` TEXT DEFAULT NULL,
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`)
+  PRIMARY KEY (`id`),
+  KEY `idx_reg_user` (`user_id`),
+  KEY `idx_reg_email` (`email`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ---------------------------------------------------------------------
@@ -299,6 +302,28 @@ CREATE TABLE IF NOT EXISTS `contact_inquiries` (
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `idx_contact_email` (`email`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------------------------
+-- 14. Table: email_notifications (Automated Email Outbox & Audit Log)
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS `email_notifications` (
+  `id` VARCHAR(64) NOT NULL,
+  `event_type` VARCHAR(80) NOT NULL,
+  `recipient_email` VARCHAR(191) NOT NULL,
+  `recipient_name` VARCHAR(150) DEFAULT NULL,
+  `subject` VARCHAR(255) NOT NULL,
+  `body_html` LONGTEXT DEFAULT NULL,
+  `body_text` TEXT DEFAULT NULL,
+  `status` ENUM('SENT', 'QUEUED', 'FAILED', 'SIMULATED') NOT NULL DEFAULT 'SENT',
+  `transport` VARCHAR(40) NOT NULL DEFAULT 'php_mail',
+  `error_message` TEXT DEFAULT NULL,
+  `related_entity_id` VARCHAR(64) DEFAULT NULL,
+  `sent_at` VARCHAR(50) NOT NULL,
+  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_email_event` (`event_type`),
+  KEY `idx_email_recipient` (`recipient_email`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- =====================================================================

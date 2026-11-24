@@ -20,7 +20,7 @@ import { useBroker } from '../../context/BrokerContext';
 import { phpApi, CONTACT_RECIPIENT_EMAIL } from '../../services/phpApiService';
 
 export const ContactPage: React.FC = () => {
-  const { triggerToast, openRegistrationWithTier, navigateToPublicPage, supportConfig } = useBroker();
+  const { triggerToast, openRegistrationWithTier, navigateToPublicPage, supportConfig, sendAutomatedEmail, emailConfig } = useBroker();
 
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
@@ -62,6 +62,35 @@ export const ContactPage: React.FC = () => {
       }
 
       const generatedRef = res?.inquiryNumber || `INQ-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+
+      // When running without live PHP contact.php backend (e.g. preview mode), record automated emails via emailService
+      if (!res) {
+        const deskRecipient = emailConfig.adminAlertEmail || CONTACT_RECIPIENT_EMAIL;
+        sendAutomatedEmail({
+          eventType: 'CONTACT_INQUIRY_DESK',
+          recipientEmail: deskRecipient,
+          recipientName: 'Underwriting Support Desk',
+          variables: {
+            inquiryNumber: generatedRef,
+            productType,
+            capitalNeeded,
+          },
+          relatedEntityId: generatedRef,
+        }).catch(() => {});
+
+        sendAutomatedEmail({
+          eventType: 'CONTACT_INQUIRY',
+          recipientEmail: email.trim(),
+          recipientName: fullName.trim(),
+          variables: {
+            inquiryNumber: generatedRef,
+            productType,
+            capitalNeeded,
+          },
+          relatedEntityId: generatedRef,
+        }).catch(() => {});
+      }
+
       setInquiryRef(generatedRef);
       setIsSubmitted(true);
       triggerToast(
@@ -188,7 +217,7 @@ export const ContactPage: React.FC = () => {
                       </a>
                       <button
                         type="button"
-                        onClick={() => openRegistrationWithTier('gold')}
+                        onClick={() => openRegistrationWithTier(null)}
                         className="min-h-[44px] py-2.5 px-5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
                       >
                         <span>Fast-Track with Membership</span>

@@ -21,9 +21,10 @@ $routeMap = [
     'checkout'    => __DIR__ . '/checkout.php',
     'subscribers' => __DIR__ . '/subscribers.php',
     'chat'        => __DIR__ . '/chat.php',
-    'contact'     => __DIR__ . '/contact.php',
-    'admin'       => __DIR__ . '/admin.php',
-    'setup_check' => __DIR__ . '/setup_check.php',
+    'contact'       => __DIR__ . '/contact.php',
+    'notifications' => __DIR__ . '/notifications.php',
+    'admin'         => __DIR__ . '/admin.php',
+    'setup_check'   => __DIR__ . '/setup_check.php',
 ];
 
 if (isset($routeMap[$endpoint]) && file_exists($routeMap[$endpoint])) {
@@ -38,14 +39,15 @@ sendJson([
     'version'   => '1.0.0',
     'runtime'   => 'PHP ' . PHP_VERSION,
     'endpoints' => [
-        'auth'        => '/backend/api/auth.php (login, register, me)',
-        'loans'       => '/backend/api/loans.php (instruments, tiers, list, apply, update_status)',
-        'documents'   => '/backend/api/documents.php (list, upload, verify)',
-        'checkout'    => '/backend/api/checkout.php (process, transactions)',
-        'subscribers' => '/backend/api/subscribers.php (list, approve_upgrade, reject_upgrade, resubmit_proof)',
-        'chat'        => '/backend/api/chat.php (history, send)',
-        'contact'     => '/backend/api/contact.php (submit, list -> support-broker@consultant.com)',
-        'admin'       => '/backend/api/admin.php (get_config, save_config, stats)',
-        'setup_check' => '/backend/api/setup_check.php (cPanel database health diagnostic)'
+        'auth'          => '/backend/api/auth.php (login, register, me)',
+        'loans'         => '/backend/api/loans.php (instruments, tiers, list, apply, update_status)',
+        'documents'     => '/backend/api/documents.php (list, upload, verify)',
+        'checkout'      => '/backend/api/checkout.php (process, transactions)',
+        'subscribers'   => '/backend/api/subscribers.php (list, approve_upgrade, reject_upgrade, resubmit_proof)',
+        'chat'          => '/backend/api/chat.php (history, send)',
+        'contact'       => '/backend/api/contact.php (submit, list -> support-broker@consultant.com)',
+        'notifications' => '/backend/api/notifications.php (send, test, list, config)',
+        'admin'         => '/backend/api/admin.php (get_config, save_config, stats)',
+        'setup_check'   => '/backend/api/setup_check.php (cPanel database health diagnostic)'
     ]
 ]);

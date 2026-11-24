@@ -6,6 +6,7 @@
 
 require_once __DIR__ . '/../config/cors.php';
 require_once __DIR__ . '/../config/db.php';
+require_once __DIR__ . '/../config/mailer.php';
 
 $pdo = Database::getConnection();
 $action = $_GET['action'] ?? ($_POST['action'] ?? 'process');
@@ -114,12 +115,18 @@ switch ($action) {
             )
         ');
 
-        // Look up user email
+        // Look up user email & current active tier (nullable if unassigned)
         $stmtUser = $pdo->prepare('SELECT email, membership_tier_id FROM users WHERE id = :uid LIMIT 1');
         $stmtUser->execute([':uid' => $userId]);
         $userRow = $stmtUser->fetch();
         $userEmail = $userRow['email'] ?? 'client@sterlingwealthbroker.com';
-        $currentTierId = $userRow['membership_tier_id'] ?? 'silver';
+        $currentTierId = !empty($userRow['membership_tier_id']) ? $userRow['membership_tier_id'] : null;
+
+        // If user had no active tier yet, mark status as PENDING_REVIEW while awaiting Customer Care approval
+        if ($currentTierId === null) {
+            $stmtMarkPending = $pdo->prepare('UPDATE users SET membership_status = "PENDING_REVIEW" WHERE id = :uid AND membership_tier_id IS NULL');
+            $stmtMarkPending->execute([':uid' => $userId]);
+        }
 
         $stmtSub->execute([
             ':id'           => $subId,
@@ -128,7 +135,7 @@ switch ($action) {
             ':email'        => $userEmail,
             ':req_id'       => $reqId,
             ':current_tier' => $currentTierId,
-            ':current_tname'=> ucfirst($currentTierId),
+            ':current_tname'=> $currentTierId ? ucfirst($currentTierId) : 'No Active Tier',
             ':req_tier'     => $tierId,
             ':req_tname'    => $tierName,
             ':proof_status' => $wireProof ? 'RECEIPT_ATTACHED' : 'AWAITING_PROOF',
@@ -139,6 +146,23 @@ switch ($action) {
             ':billing'      => json_encode($billingAddress),
             ':card'         => $cardLast4
         ]);
+
+        // Automated Payment Pending Email to Client & Customer Care Agent
+        EmailNotifier::dispatchEvent(
+            $pdo,
+            'TIER_PAYMENT_SUBMITTED',
+            $userEmail,
+            $userName,
+            [
+                'requestId'     => $reqId,
+                'tierName'      => $tierName,
+                'amount'        => '$' . number_format($amount, 2),
+                'paymentMethod' => $paymentMethod,
+                'careAgent'     => 'Jeff Campbell',
+                'careEmail'     => 'jeff@sterlingwealthbroker.com',
+            ],
+            $reqId
+        );
 
         sendJson([
             'message'        => 'Payment request recorded and staged for manual underwriting review',

@@ -13,6 +13,7 @@ import {
   RegistrationApplication,
   HomepageCMSContent,
   SiteBranding,
+  EmailAutomationConfig,
 } from '../types';
 
 export const INITIAL_MEMBERSHIP_TIERS: MembershipTier[] = [
@@ -1310,6 +1311,33 @@ export const DEFAULT_SITE_BRANDING: SiteBranding = {
   logoUrl: null,
   logoFileName: undefined,
 };
+
+export const DEFAULT_EMAIL_AUTOMATION_CONFIG: EmailAutomationConfig = {
+  enabled: true,
+  driver: 'smtp',
+  fromName: 'Sterling Wealth Broker',
+  fromEmail: 'noreply@investproasset.com',
+  replyToEmail: 'support-broker@consultant.com',
+  adminAlertEmail: 'support-broker@consultant.com',
+  smtpHost: 'mail.investproasset.com',
+  smtpPort: 465,
+  smtpEncryption: 'ssl',
+  smtpUsername: 'noreply@investproasset.com',
+  smtpPassword: '',
+  triggers: {
+    EMAIL_OTP_VERIFICATION: true,
+    WELCOME_REGISTRATION: true,
+    KYC_APPROVED: true,
+    KYC_REJECTED: true,
+    TIER_PAYMENT_SUBMITTED: true,
+    TIER_UPGRADE_APPROVED: true,
+    TIER_UPGRADE_REJECTED: true,
+    LOAN_APPLICATION_SUBMITTED: true,
+    LOAN_STATUS_UPDATED: true,
+    CONTACT_INQUIRY: true,
+  },
+};
+
 
 
 

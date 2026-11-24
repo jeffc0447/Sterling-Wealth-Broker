@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useBroker } from '../../context/BrokerContext';
-import { KYCDocumentType, KYCDocumentInfo } from '../../types';
+import { KYCDocumentType, KYCDocumentInfo, MembershipTierId } from '../../types';
 import {
   ShieldCheck,
   Check,
@@ -94,8 +94,17 @@ export const RegistrationKYCWizard: React.FC<RegistrationKYCWizardProps> = ({
     pendingBillingCycle,
   } = useBroker();
 
-  const selectedTier =
-    tiers.find((t) => t.id === registerPreselectedTierId) || tiers[1]; // default to Gold Executive
+  const [chosenTierId, setChosenTierId] = useState<MembershipTierId | null>(
+    registerPreselectedTierId || null
+  );
+
+  useEffect(() => {
+    setChosenTierId(registerPreselectedTierId || null);
+  }, [registerPreselectedTierId]);
+
+  const selectedTier = chosenTierId
+    ? tiers.find((t) => t.id === chosenTierId) || null
+    : null;
 
   // Layout mode: Multi-Step Wizard or Logical Single-Page
   const [layoutMode, setLayoutMode] = useState<'WIZARD' | 'SINGLE_PAGE'>('WIZARD');
@@ -352,34 +361,37 @@ export const RegistrationKYCWizard: React.FC<RegistrationKYCWizardProps> = ({
       ).join('')}`,
     };
 
-    const newApp = submitRegistration({
-      userId: `usr-${Date.now().toString().slice(-4)}`,
-      username,
-      email,
-      fullName: {
-        firstName,
-        middleName: middleName || undefined,
-        lastName,
+    const newApp = submitRegistration(
+      {
+        userId: `usr-${Date.now()}`,
+        username,
+        email,
+        fullName: {
+          firstName,
+          middleName: middleName || undefined,
+          lastName,
+        },
+        gender,
+        maritalStatus,
+        residentialAddress: {
+          streetAddress,
+          city,
+          state,
+          zipCode,
+          country,
+        },
+        employment: {
+          employmentStatus,
+          jobTitle,
+        },
+        loanReason,
+        kycDocument: kycDocInfo,
+        selectedTierId: selectedTier ? selectedTier.id : null,
+        selectedTierName: selectedTier ? selectedTier.name : 'Choose Later (After Sign-Up)',
+        emailVerified: false,
       },
-      gender,
-      maritalStatus,
-      residentialAddress: {
-        streetAddress,
-        city,
-        state,
-        zipCode,
-        country,
-      },
-      employment: {
-        employmentStatus,
-        jobTitle,
-      },
-      loanReason,
-      kycDocument: kycDocInfo,
-      selectedTierId: selectedTier.id,
-      selectedTierName: selectedTier.name,
-      emailVerified: false,
-    });
+      password
+    );
 
     onRegistered(newApp.id, email);
   };
@@ -523,6 +535,64 @@ export const RegistrationKYCWizard: React.FC<RegistrationKYCWizardProps> = ({
           </div>
         </div>
       )}
+
+      {/* Membership Tier Package Choice (Optional) */}
+      <div className="pt-2 border-t border-slate-800/80 space-y-2.5">
+        <div className="flex items-center justify-between gap-2">
+          <label className="block text-xs font-semibold text-white">
+            Membership Tier Package (Optional)
+          </label>
+          <span className="text-[10px] font-mono uppercase tracking-wider text-amber-400">
+            Manual Care Approval Required
+          </span>
+        </div>
+        <p className="text-[11px] text-slate-400 leading-relaxed">
+          No tier is assigned automatically. Select a package now or choose later after signing up — all membership packages are manually reviewed and approved by Customer Care Support in the Admin Panel.
+        </p>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => setChosenTierId(null)}
+            className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+              chosenTierId === null
+                ? 'bg-emerald-500/15 border-emerald-500/50 text-white ring-1 ring-emerald-500/30'
+                : 'bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700'
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold">Choose Later (After Sign-Up)</span>
+              {chosenTierId === null && <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />}
+            </div>
+            <span className="text-[10px] text-slate-400 block mt-0.5">
+              Create account first with no tier assigned
+            </span>
+          </button>
+
+          {tiers.map((tier) => (
+            <button
+              key={tier.id}
+              type="button"
+              onClick={() => setChosenTierId(tier.id)}
+              className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                chosenTierId === tier.id
+                  ? 'bg-amber-500/15 border-amber-500/50 text-white ring-1 ring-amber-500/30'
+                  : 'bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-700'
+              }`}
+            >
+              <div className="flex items-center justify-between gap-1">
+                <span className="text-xs font-semibold truncate">{tier.name}</span>
+                <span className="text-[11px] font-mono text-emerald-400 shrink-0">
+                  ${tier.price.toLocaleString()}/{tier.period}
+                </span>
+              </div>
+              <span className="text-[10px] text-slate-400 block mt-0.5">
+                Limit up to ${tier.maxLoanLimit.toLocaleString()} · Pending Care Review
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
     </div>
   );
 
@@ -1063,7 +1133,9 @@ export const RegistrationKYCWizard: React.FC<RegistrationKYCWizardProps> = ({
               </span>
               <span className="text-slate-600 hidden xs:inline">·</span>
               <span className="text-xs text-amber-300 font-medium truncate hidden xs:inline">
-                {selectedTier.name} (${selectedTier.price.toLocaleString()})
+                {selectedTier
+                  ? `${selectedTier.name} ($${selectedTier.price.toLocaleString()})`
+                  : 'Tier: Choose Later (Optional)'}
               </span>
             </div>
             <h2 className="font-display text-base sm:text-lg font-bold text-white mt-0.5 truncate">

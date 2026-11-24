@@ -5,6 +5,7 @@
 
 require_once __DIR__ . '/../config/cors.php';
 require_once __DIR__ . '/../config/db.php';
+require_once __DIR__ . '/../config/mailer.php';
 
 $pdo = Database::getConnection();
 $action = $_GET['action'] ?? ($_POST['action'] ?? 'list');
@@ -118,6 +119,21 @@ switch ($action) {
             ':tier'       => $tierAtSubmission
         ]);
 
+        if (!empty($applicantEmail)) {
+            EmailNotifier::dispatchEvent(
+                $pdo,
+                'LOAN_APPLICATION_SUBMITTED',
+                $applicantEmail,
+                $applicantName ?: 'Valued Member',
+                [
+                    'applicationNumber' => $appNumber,
+                    'instrumentTitle'   => $instrumentTitle,
+                    'requestedAmount'   => '$' . number_format($requestedAmount, 2),
+                ],
+                $appId
+            );
+        }
+
         sendJson([
             'message'           => 'Loan application successfully submitted to underwriting queue',
             'applicationId'     => $appId,
@@ -161,6 +177,25 @@ switch ($action) {
             ':updated' => date('Y-m-d H:i:s'),
             ':id'      => $appId
         ]);
+
+        $stmtLoanInfo = $pdo->prepare('SELECT application_number, applicant_name, applicant_email, partner_bank FROM loan_applications WHERE id = :id LIMIT 1');
+        $stmtLoanInfo->execute([':id' => $appId]);
+        $loanInfo = $stmtLoanInfo->fetch();
+        if ($loanInfo && !empty($loanInfo['applicant_email'])) {
+            EmailNotifier::dispatchEvent(
+                $pdo,
+                'LOAN_STATUS_UPDATED',
+                $loanInfo['applicant_email'],
+                $loanInfo['applicant_name'] ?? 'Valued Member',
+                [
+                    'applicationNumber' => $loanInfo['application_number'],
+                    'status'            => $newStatus,
+                    'partnerBank'       => $partnerBank ?: ($loanInfo['partner_bank'] ?: 'Syndicate Lending Desk'),
+                    'note'              => $note ?: 'Your application has progressed to the next underwriting stage.',
+                ],
+                $appId
+            );
+        }
 
         sendJson(['message' => "Application status updated to $newStatus"]);
         break;

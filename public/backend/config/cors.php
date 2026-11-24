@@ -17,7 +17,19 @@ defined('SITE_URL') || define('SITE_URL', (string)envValue('SITE_URL', 'https://
 defined('CONTACT_RECIPIENT_EMAIL') || define('CONTACT_RECIPIENT_EMAIL', (string)envValue('CONTACT_RECIPIENT_EMAIL', 'support-broker@consultant.com'));
 defined('MAIL_FROM_EMAIL') || define('MAIL_FROM_EMAIL', (string)envValue('MAIL_FROM_EMAIL', 'noreply@investproasset.com'));
 defined('MAIL_FROM_NAME') || define('MAIL_FROM_NAME', (string)envValue('MAIL_FROM_NAME', 'Sterling Wealth Broker'));
-defined('AUTH_TOKEN_SECRET') || define('AUTH_TOKEN_SECRET', (string)envValue('AUTH_TOKEN_SECRET', 'sterling-cpanel-default-secret-change-in-env'));
+$configuredSecret = (string)envValue('AUTH_TOKEN_SECRET', '');
+if ($configuredSecret === '') {
+    $secretFile = __DIR__ . '/.auth_secret';
+    if (is_file($secretFile)) {
+        $configuredSecret = trim((string)@file_get_contents($secretFile));
+    }
+    if ($configuredSecret === '') {
+        $configuredSecret = bin2hex(random_bytes(32));
+        @file_put_contents($secretFile, $configuredSecret);
+        @chmod($secretFile, 0600);
+    }
+}
+defined('AUTH_TOKEN_SECRET') || define('AUTH_TOKEN_SECRET', $configuredSecret);
 
 $defaultOrigins = [
     'https://investproasset.com',
@@ -120,3 +132,150 @@ function getBearerToken(): ?string {
     }
     return null;
 }
+
+/**
+ * Base64URL encode / decode helpers
+ */
+function base64UrlEncode(string $data): string {
+    return rtrim(strtr(base64_encode($data), '+/', '-_'), '=');
+}
+
+function base64UrlDecode(string $data): string {
+    $remainder = strlen($data) % 4;
+    if ($remainder) {
+        $data .= str_repeat('=', 4 - $remainder);
+    }
+    $decoded = base64_decode(strtr($data, '-_', '+/'), true);
+    return $decoded !== false ? $decoded : '';
+}
+
+/**
+ * Create an HMAC-SHA256 signed auth token
+ */
+function createSignedToken(array $payload): string {
+    if (!isset($payload['iat'])) {
+        $payload['iat'] = time();
+    }
+    if (!isset($payload['exp'])) {
+        $payload['exp'] = time() + 86400 * 7; // 7 days
+    }
+    $headerB64 = base64UrlEncode(json_encode(['alg' => 'HS256', 'typ' => 'JWT']));
+    $payloadB64 = base64UrlEncode(json_encode($payload));
+    $sig = hash_hmac('sha256', $headerB64 . '.' . $payloadB64, AUTH_TOKEN_SECRET, true);
+    return $headerB64 . '.' . $payloadB64 . '.' . base64UrlEncode($sig);
+}
+
+/**
+ * Verify and decode an HMAC-SHA256 signed auth token
+ */
+function verifySignedToken(?string $token): ?array {
+    if (!$token || !is_string($token)) {
+        return null;
+    }
+    $parts = explode('.', $token);
+    if (count($parts) === 3) {
+        [$headerB64, $payloadB64, $sigB64] = $parts;
+        $expectedSig = base64UrlEncode(hash_hmac('sha256', $headerB64 . '.' . $payloadB64, AUTH_TOKEN_SECRET, true));
+        if (!hash_equals($expectedSig, $sigB64)) {
+            return null;
+        }
+        $payload = json_decode(base64UrlDecode($payloadB64), true);
+        if (!is_array($payload)) {
+            return null;
+        }
+        if (isset($payload['exp']) && time() > intval($payload['exp'])) {
+            return null;
+        }
+        return $payload;
+    }
+    return null;
+}
+
+/**
+ * Set HttpOnly session cookie (supports HTTPS and reverse proxy detection)
+ */
+function setSessionCookie(string $cookieName, string $token, int $ttlSeconds = 604800): void {
+    $isHttps = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+        || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https')
+        || (intval($_SERVER['SERVER_PORT'] ?? 80) === 443);
+
+    $cookieOptions = [
+        'expires'  => time() + $ttlSeconds,
+        'path'     => '/',
+        'secure'   => $isHttps,
+        'httponly' => true,
+        'samesite' => $isHttps ? 'None' : 'Lax',
+    ];
+    @setcookie($cookieName, $token, $cookieOptions);
+}
+
+/**
+ * Clear an HttpOnly session cookie
+ */
+function clearSessionCookie(string $cookieName): void {
+    $isHttps = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+        || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https')
+        || (intval($_SERVER['SERVER_PORT'] ?? 80) === 443);
+
+    @setcookie($cookieName, '', [
+        'expires'  => time() - 3600,
+        'path'     => '/',
+        'secure'   => $isHttps,
+        'httponly' => true,
+        'samesite' => $isHttps ? 'None' : 'Lax',
+    ]);
+}
+
+/**
+ * Check Origin/CSRF header when authenticating via HttpOnly cookie on state-changing requests
+ */
+function isValidCsrfContext(): bool {
+    if (!empty($_SERVER['HTTP_X_REQUESTED_WITH'])) {
+        return true;
+    }
+    $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
+    $host = $_SERVER['HTTP_X_FORWARDED_HOST'] ?? ($_SERVER['HTTP_HOST'] ?? '');
+    if ($origin !== '' && $host !== '') {
+        $originHost = parse_url($origin, PHP_URL_HOST);
+        $cleanHost = explode(':', $host)[0];
+        if ($originHost && strcasecmp($originHost, $cleanHost) === 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/**
+ * Verify admin session via Bearer token or HttpOnly admin cookie
+ */
+function requireAdminAuth(PDO $pdo): array {
+    $bearer = getBearerToken();
+    if ($bearer) {
+        $payload = verifySignedToken($bearer);
+        if ($payload && !empty($payload['isAdmin']) && !empty($payload['id'])) {
+            $stmt = $pdo->prepare('SELECT id, name, email, role FROM admins WHERE id = :id LIMIT 1');
+            $stmt->execute([':id' => $payload['id']]);
+            $admin = $stmt->fetch();
+            if ($admin) {
+                return $admin;
+            }
+        }
+    }
+
+    $cookieToken = $_COOKIE['swb_admin_session'] ?? null;
+    if ($cookieToken && isValidCsrfContext()) {
+        $payload = verifySignedToken($cookieToken);
+        if ($payload && !empty($payload['isAdmin']) && !empty($payload['id'])) {
+            $stmt = $pdo->prepare('SELECT id, name, email, role FROM admins WHERE id = :id LIMIT 1');
+            $stmt->execute([':id' => $payload['id']]);
+            $admin = $stmt->fetch();
+            if ($admin) {
+                return $admin;
+            }
+        }
+    }
+
+    sendError('Unauthorized: Administrator authentication required.', 401);
+    return [];
+}
+

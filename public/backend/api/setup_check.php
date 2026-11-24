@@ -22,6 +22,12 @@ $results = [
         'site_url'        => defined('SITE_URL') ? SITE_URL : 'https://investproasset.com',
         'uploads_writable'=> is_dir($uploadsDir) && is_writable($uploadsDir),
     ],
+    'mail_config'       => [
+        'driver'          => strtolower((string)envValue('MAIL_DRIVER', 'mail')),
+        'from_email'      => defined('MAIL_FROM_EMAIL') ? MAIL_FROM_EMAIL : 'noreply@investproasset.com',
+        'smtp_configured' => ((string)envValue('SMTP_HOST', '') !== '' && (string)envValue('SMTP_USER', '') !== ''),
+        'admin_alert'     => (string)envValue('ADMIN_ALERT_EMAIL', defined('CONTACT_RECIPIENT_EMAIL') ? CONTACT_RECIPIENT_EMAIL : 'support-broker@consultant.com'),
+    ],
     'extensions'        => [
         'pdo'       => extension_loaded('pdo'),
         'pdo_mysql' => extension_loaded('pdo_mysql'),
@@ -53,7 +59,8 @@ $requiredTables = [
     'registration_applications',
     'broker_messages',
     'system_settings',
-    'contact_inquiries'
+    'contact_inquiries',
+    'email_notifications'
 ];
 
 try {

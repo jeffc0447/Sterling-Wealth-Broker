@@ -1,6 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useBroker } from '../../context/BrokerContext';
-import { FinancialInstrument } from '../../types';
+import {
+  calculateTierLoanSchedule,
+  BillingAnchorPreference,
+  toIsoDateString,
+} from '../../utils/loanDateEngine';
 import {
   ShieldAlert,
   ArrowRight,
@@ -10,6 +14,7 @@ import {
   Building,
   AlertTriangle,
   Sparkles,
+  Calendar,
 } from 'lucide-react';
 
 export const LoanApplicationWizard: React.FC = () => {
@@ -24,7 +29,9 @@ export const LoanApplicationWizard: React.FC = () => {
     preselectedAmount,
   } = useBroker();
 
-  const currentTier = tiers.find((t) => t.id === currentUser.membershipTierId) || tiers[1];
+  const currentTier = currentUser.membershipTierId
+    ? tiers.find((t) => t.id === currentUser.membershipTierId) || null
+    : null;
 
   const [currentStep, setCurrentStep] = useState<number>(1);
   const [submittedAppNumber, setSubmittedAppNumber] = useState<string | null>(null);
@@ -51,13 +58,67 @@ export const LoanApplicationWizard: React.FC = () => {
   const [collateralType, setCollateralType] = useState<string>(
     'Corporate Guarantee & Account Receivables'
   );
+  const [preferredIntakeDate, setPreferredIntakeDate] = useState<string>(() =>
+    toIsoDateString(new Date())
+  );
+  const [anchorPreference, setAnchorPreference] =
+    useState<BillingAnchorPreference>('ANNIVERSARY');
 
   const selectedInstrument =
     instruments.find((i) => i.id === selectedInstrumentId) || instruments[0];
 
   // Tier limit check
-  const exceedsTierLimit = requestedAmount > currentTier.maxLoanLimit;
+  const maxLimit = currentTier?.maxLoanLimit || 0;
+  const exceedsTierLimit = currentTier ? requestedAmount > maxLimit : true;
   const recommendedTierForAmount = tiers.find((t) => t.maxLoanLimit >= requestedAmount) || tiers[3];
+
+  const tierDateSchedule = useMemo(() => {
+    const activeTierForCalc = currentTier || tiers[0];
+    return calculateTierLoanSchedule({
+      tier: activeTierForCalc,
+      loanAmount: requestedAmount,
+      termMonths,
+      applicationDate: preferredIntakeDate,
+      anchorPreference,
+      baselineTier: tiers.find((t) => t.id === 'silver') || tiers[0],
+    });
+  }, [currentTier, tiers, requestedAmount, termMonths, preferredIntakeDate, anchorPreference]);
+
+  if (!currentTier) {
+    return (
+      <div className="max-w-2xl mx-auto bg-slate-900 border border-amber-500/40 rounded-2xl p-6 sm:p-8 shadow-xl space-y-4">
+        <div className="flex items-start gap-3.5">
+          <div className="w-11 h-11 rounded-xl bg-amber-500/15 border border-amber-500/40 flex items-center justify-center text-amber-400 shrink-0">
+            <ShieldAlert className="w-5 h-5" />
+          </div>
+          <div>
+            <span className="text-[10px] font-mono uppercase tracking-wider text-amber-400 font-bold block mb-1">
+              Membership Tier Approval Required
+            </span>
+            <h2 className="font-display text-xl font-bold text-white">
+              Active Membership Tier Required Before Applying
+            </h2>
+            <p className="text-xs sm:text-sm text-slate-300 mt-1.5 leading-relaxed">
+              {currentUser.pendingUpgrade?.status === 'PENDING_VERIFICATION'
+                ? `Your selected membership package (${currentUser.pendingUpgrade.requestedTierName}) is currently pending manual review and approval by Customer Care Support in the Admin Panel.`
+                : 'No membership tier package is assigned automatically on registration. Please return to Portfolio Overview to select a membership tier package so Customer Care Support can manually review and approve your borrowing ceiling.'}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3 pt-2">
+          <button
+            type="button"
+            onClick={() => setPortalTab('OVERVIEW')}
+            className="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-semibold rounded-xl text-xs inline-flex items-center gap-1.5 transition cursor-pointer"
+          >
+            <span>Go to Portfolio Overview &amp; Choose Tier</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const handleNext = () => {
     if (currentStep < 4) setCurrentStep((prev) => prev + 1);
@@ -82,6 +143,11 @@ export const LoanApplicationWizard: React.FC = () => {
       annualIncome: annualRevenue,
       creditScore,
       assignedBroker: currentUser.assignedBroker,
+      estimatedApprovalDate: tierDateSchedule.underwritingApprovalDateFormatted,
+      estimatedDisbursementDate: tierDateSchedule.disbursementDateFormatted,
+      firstPaymentDate: tierDateSchedule.firstPaymentDateFormatted,
+      maturityDate: tierDateSchedule.maturityDateFormatted,
+      effectiveApr: tierDateSchedule.effectiveApr,
     });
     setSubmittedAppNumber(appNum);
   };
@@ -149,6 +215,18 @@ export const LoanApplicationWizard: React.FC = () => {
               <div className="flex justify-between text-slate-400">
                 <span>Underwriting SLA:</span>
                 <span className="text-amber-400 font-medium">{currentTier.processingSLA}</span>
+              </div>
+              <div className="flex justify-between text-slate-400">
+                <span>Est. Disbursement Date:</span>
+                <span className="text-emerald-400 font-mono font-medium">
+                  {tierDateSchedule.disbursementDateFormatted}
+                </span>
+              </div>
+              <div className="flex justify-between text-slate-400">
+                <span>First Installment / Maturity:</span>
+                <span className="text-slate-200 font-mono">
+                  {tierDateSchedule.firstPaymentDateFormatted} → {tierDateSchedule.maturityDateFormatted}
+                </span>
               </div>
             </div>
 
@@ -256,7 +334,7 @@ export const LoanApplicationWizard: React.FC = () => {
                         key={m}
                         type="button"
                         onClick={() => setTermMonths(m)}
-                        className={`py-2 px-3 rounded-lg text-xs font-medium border transition-all ${
+                        className={`py-2 px-3 rounded-lg text-xs font-medium border transition-all cursor-pointer ${
                           termMonths === m
                             ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300'
                             : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
@@ -265,6 +343,70 @@ export const LoanApplicationWizard: React.FC = () => {
                         {m} Months
                       </button>
                     ))}
+                  </div>
+                </div>
+
+                {/* Tier-Based Loan Date Calculation Preview */}
+                <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 text-xs font-semibold text-white">
+                      <Calendar className="w-4 h-4 text-emerald-400" />
+                      <span>Tier-Calculated Loan Timeline ({currentTier.name})</span>
+                    </div>
+                    <span className="text-[11px] text-emerald-400 font-mono">
+                      {tierDateSchedule.effectiveApr}% Est. APR · ${tierDateSchedule.monthlyPayment.toLocaleString()}/mo
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label htmlFor="wizard-intake-date" className="block text-[11px] text-slate-400 mb-1">
+                        Target Application Start Date
+                      </label>
+                      <input
+                        id="wizard-intake-date"
+                        type="date"
+                        value={preferredIntakeDate}
+                        onChange={(e) => {
+                          if (e.target.value) setPreferredIntakeDate(e.target.value);
+                        }}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-emerald-500"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="wizard-anchor-day" className="block text-[11px] text-slate-400 mb-1">
+                        Monthly Repayment Anchor
+                      </label>
+                      <select
+                        id="wizard-anchor-day"
+                        value={anchorPreference}
+                        onChange={(e) => setAnchorPreference(e.target.value as BillingAnchorPreference)}
+                        className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-emerald-500"
+                      >
+                        <option value="ANNIVERSARY">Funding Date Anniversary</option>
+                        <option value="FIRST_OF_MONTH">1st of Each Month</option>
+                        <option value="FIFTEENTH_OF_MONTH">15th of Each Month</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-2 border-t border-slate-800/80 text-[11px] tabular-nums">
+                    <div>
+                      <span className="text-slate-400 block">Underwriting</span>
+                      <strong className="text-white">{tierDateSchedule.underwritingApprovalDateFormatted}</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block">Est. Funding</span>
+                      <strong className="text-emerald-400">{tierDateSchedule.disbursementDateFormatted}</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block">1st Payment</span>
+                      <strong className="text-white">{tierDateSchedule.firstPaymentDateFormatted}</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block">Maturity Date</span>
+                      <strong className="text-white">{tierDateSchedule.maturityDateFormatted}</strong>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -430,6 +572,18 @@ export const LoanApplicationWizard: React.FC = () => {
                     <div>
                       <span>Indicative Partner Syndicate:</span>
                       <strong className="block text-slate-200 mt-0.5">{selectedInstrument.partnerLenders.join(', ')}</strong>
+                    </div>
+                    <div>
+                      <span>Est. Underwriting / Funding:</span>
+                      <strong className="block text-emerald-400 mt-0.5 tabular-nums">
+                        {tierDateSchedule.underwritingApprovalDateFormatted} → {tierDateSchedule.disbursementDateFormatted}
+                      </strong>
+                    </div>
+                    <div>
+                      <span>1st Payment / Final Maturity:</span>
+                      <strong className="block text-slate-200 mt-0.5 tabular-nums">
+                        {tierDateSchedule.firstPaymentDateFormatted} → {tierDateSchedule.maturityDateFormatted}
+                      </strong>
                     </div>
                   </div>
                 </div>

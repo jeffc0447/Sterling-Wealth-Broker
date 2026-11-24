@@ -57,7 +57,11 @@ export const AdminSubscribers: React.FC = () => {
         (sub.company && sub.company.toLowerCase().includes(searchTerm.toLowerCase()));
 
       const matchesTier =
-        selectedTierFilter === 'ALL' || sub.membershipTierId === selectedTierFilter;
+        selectedTierFilter === 'ALL'
+          ? true
+          : selectedTierFilter === 'UNASSIGNED'
+          ? sub.membershipTierId === null
+          : sub.membershipTierId === selectedTierFilter;
 
       const matchesStatus =
         selectedStatusFilter === 'ALL' || sub.paymentStatus === selectedStatusFilter;
@@ -108,7 +112,7 @@ export const AdminSubscribers: React.FC = () => {
     setTimeout(() => setStatusUpdateNotice(null), 3000);
   };
 
-  const getTierColor = (tierId: MembershipTierId) => {
+  const getTierColor = (tierId: MembershipTierId | null) => {
     switch (tierId) {
       case 'silver':
         return 'bg-slate-800 text-slate-300 border-slate-700';
@@ -291,6 +295,7 @@ export const AdminSubscribers: React.FC = () => {
             className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-xs text-slate-300 focus:outline-none focus:border-emerald-500"
           >
             <option value="ALL">All Tiers</option>
+            <option value="UNASSIGNED">No Active Tier</option>
             <option value="silver">Silver Access</option>
             <option value="gold">Gold Executive</option>
             <option value="platinum">Platinum Prestige</option>
@@ -397,10 +402,14 @@ export const AdminSubscribers: React.FC = () => {
                               sub.membershipTierId
                             )}`}
                           >
-                            {sub.membershipTierName}
+                            {sub.membershipTierName || 'No Active Tier'}
                           </span>
                           <div className="text-[10px] text-slate-400">
-                            Limit: ${targetTier?.maxLoanLimit.toLocaleString()} · ${sub.amountPaid}/qtr
+                            {targetTier
+                              ? `Limit: $${targetTier.maxLoanLimit.toLocaleString()} · $${sub.amountPaid}/qtr`
+                              : sub.requestedTierName
+                              ? `Requested: ${sub.requestedTierName}`
+                              : 'Pending Tier Choice / Care Review'}
                           </div>
                         </div>
                       </td>
@@ -519,25 +528,29 @@ export const AdminSubscribers: React.FC = () => {
                   <div>
                     <span className="text-[10px] text-slate-500 block">Tier Level</span>
                     <span className="font-semibold text-slate-200">
-                      {selectedSubscriber.membershipTierName}
+                      {selectedSubscriber.membershipTierName || 'No Active Tier'}
                     </span>
                   </div>
                   <div>
                     <span className="text-[10px] text-slate-500 block">Borrowing Limit</span>
                     <span className="font-semibold text-emerald-400">
-                      ${tiers.find((t) => t.id === selectedSubscriber.membershipTierId)?.maxLoanLimit.toLocaleString() || '100,000'}
+                      ${(tiers.find((t) => t.id === selectedSubscriber.membershipTierId)?.maxLoanLimit || 0).toLocaleString()}
                     </span>
                   </div>
                   <div>
                     <span className="text-[10px] text-slate-500 block">Underwriting SLA</span>
                     <span className="font-semibold text-amber-400">
-                      {tiers.find((t) => t.id === selectedSubscriber.membershipTierId)?.processingSLA || '24 Hours'}
+                      {tiers.find((t) => t.id === selectedSubscriber.membershipTierId)?.processingSLA || 'Pending Care Review'}
                     </span>
                   </div>
                   <div>
                     <span className="text-[10px] text-slate-500 block">Dedicated Broker</span>
                     <span className="font-semibold text-slate-200">
-                      {tiers.find((t) => t.id === selectedSubscriber.membershipTierId)?.dedicatedBroker ? 'Assigned' : 'General Desk'}
+                      {tiers.find((t) => t.id === selectedSubscriber.membershipTierId)?.dedicatedBroker
+                        ? 'Assigned'
+                        : selectedSubscriber.membershipTierId
+                        ? 'General Desk'
+                        : 'Pending Approval'}
                     </span>
                   </div>
                 </div>
@@ -824,7 +837,7 @@ export const AdminSubscribers: React.FC = () => {
             </div>
 
             <p className="text-xs text-slate-400 leading-relaxed">
-              Are you sure you want to delete this subscriber profile created by error? This will permanently remove their active membership status and billing profile from the registry.
+              Are you sure you want to permanently delete this subscriber profile from the server? This will remove their membership registration, KYC documents, and active account, revoking all client dashboard access until they create a new membership account.
             </p>
 
             <div className="flex justify-end gap-2.5 pt-2">
@@ -843,9 +856,8 @@ export const AdminSubscribers: React.FC = () => {
                     setSelectedSubscriber(null);
                   }
                   setSubscriberToDelete(null);
-                  triggerToast('Subscriber Deleted', `Removed ${subscriberToDelete.name}'s profile from registry.`, 'info');
                 }}
-                className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white font-semibold rounded-xl text-xs flex items-center gap-1.5 shadow-md shadow-rose-600/30"
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white font-semibold rounded-xl text-xs flex items-center gap-1.5 shadow-md shadow-rose-600/30 cursor-pointer"
               >
                 <Trash2 className="w-3.5 h-3.5" />
                 <span>Confirm Delete Profile</span>

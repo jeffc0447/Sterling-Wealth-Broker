@@ -4,6 +4,7 @@ import { ApplicationStatus } from '../../types';
 import { UserDashboardStatusCard } from '../flows/UserDashboardStatusCard';
 import { ClientMembershipPlans } from './ClientMembershipPlans';
 import { EncryptedChat } from './EncryptedChat';
+import { TierLoanDateEngine } from './TierLoanDateEngine';
 import {
   ShieldAlert,
   ArrowUpRight,
@@ -34,7 +35,9 @@ export const PortalOverview: React.FC = () => {
     supportConfig,
   } = useBroker();
 
-  const currentTier = tiers.find((t) => t.id === currentUser.membershipTierId);
+  const currentTier = currentUser.membershipTierId
+    ? tiers.find((t) => t.id === currentUser.membershipTierId) || null
+    : null;
   const userApps = applications.filter((a) => a.userId === currentUser.id);
 
   // Compute borrowing utilization
@@ -43,8 +46,9 @@ export const PortalOverview: React.FC = () => {
     return acc;
   }, 0);
 
-  const maxLimit = currentTier?.maxLoanLimit || 250000;
-  const utilizationPercent = Math.min(100, Math.round((totalRequestedOrApproved / maxLimit) * 100));
+  const maxLimit = currentTier?.maxLoanLimit || 0;
+  const utilizationPercent =
+    maxLimit > 0 ? Math.min(100, Math.round((totalRequestedOrApproved / maxLimit) * 100)) : 0;
 
   const pipelineStages: ApplicationStatus[] = [
     'PENDING',
@@ -90,7 +94,9 @@ export const PortalOverview: React.FC = () => {
           <div>
             <div className="flex items-center justify-between text-xs text-slate-400 mb-2">
               <span>Active Tier Capacity</span>
-              <span className="font-semibold text-amber-400">{currentTier?.name}</span>
+              <span className="font-semibold text-amber-400">
+                {currentTier ? currentTier.name : 'No Active Tier'}
+              </span>
             </div>
 
             <div className="flex items-baseline gap-1.5 mb-3">
@@ -113,7 +119,7 @@ export const PortalOverview: React.FC = () => {
             </div>
             <div className="flex justify-between text-[11px] text-slate-400">
               <span>{utilizationPercent}% Capacity Engaged</span>
-              <span>${(maxLimit - totalRequestedOrApproved).toLocaleString()} Available</span>
+              <span>${Math.max(0, maxLimit - totalRequestedOrApproved).toLocaleString()} Available</span>
             </div>
           </div>
 
@@ -176,7 +182,9 @@ export const PortalOverview: React.FC = () => {
           <div>
             <div className="flex items-center justify-between text-xs text-slate-400 mb-2">
               <span>Broker Coverage</span>
-              <span className="text-emerald-400 font-medium">SLA: {currentTier?.processingSLA}</span>
+              <span className="text-emerald-400 font-medium">
+                SLA: {currentTier ? currentTier.processingSLA : 'Pending Tier Approval'}
+              </span>
             </div>
 
             <h3 className="text-base font-semibold text-white">
@@ -269,6 +277,9 @@ export const PortalOverview: React.FC = () => {
         )}
       </div>
 
+      {/* Tier-Based Loan Date Calculation Engine */}
+      <TierLoanDateEngine />
+
       {/* Active Loan Applications Tracker Section */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
@@ -295,7 +306,8 @@ export const PortalOverview: React.FC = () => {
             <FileText className="w-8 h-8 text-slate-600 mx-auto mb-2" />
             <h4 className="text-sm font-semibold text-white">No Active Applications</h4>
             <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
-              You haven't submitted any loan applications under your {currentTier?.name} yet.
+              You haven&apos;t submitted any loan applications under{' '}
+              {currentTier ? `your ${currentTier.name}` : 'your account'} yet.
             </p>
             <button
               onClick={() => setPortalTab('APPLY')}
@@ -387,13 +399,31 @@ export const PortalOverview: React.FC = () => {
                   )}
 
                   {/* Bottom Actions for Application */}
-                  <div className="flex items-center justify-between text-xs pt-1">
-                    <span className="text-[11px] text-slate-500">
-                      Submitted on {app.submittedAt} · Last Updated {app.lastUpdated}
-                    </span>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs pt-1">
+                    <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px] text-slate-400">
+                      <span>Submitted {app.submittedAt}</span>
+                      <span aria-hidden="true">·</span>
+                      <span>Updated {app.lastUpdated}</span>
+                      {app.estimatedDisbursementDate && (
+                        <>
+                          <span aria-hidden="true">·</span>
+                          <span className="text-emerald-400">
+                            Est. Disbursement: {app.estimatedDisbursementDate}
+                          </span>
+                        </>
+                      )}
+                      {app.maturityDate && (
+                        <>
+                          <span aria-hidden="true">·</span>
+                          <span className="text-slate-300">
+                            Maturity: {app.maturityDate}
+                          </span>
+                        </>
+                      )}
+                    </div>
                     <button
                       onClick={() => setPortalTab('MESSAGES')}
-                      className="text-emerald-400 hover:text-emerald-300 font-medium flex items-center gap-1"
+                      className="text-emerald-400 hover:text-emerald-300 font-medium flex items-center gap-1 cursor-pointer self-start sm:self-auto"
                     >
                       <MessageSquare className="w-3 h-3" />
                       <span>Inquire with Broker Desk</span>

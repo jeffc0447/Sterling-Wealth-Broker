@@ -17,6 +17,7 @@ import {
   UserPlus,
 } from 'lucide-react';
 import { useBroker } from '../../context/BrokerContext';
+import { MembershipTierId } from '../../types';
 
 export const LoginModal: React.FC = () => {
   const {
@@ -33,6 +34,7 @@ export const LoginModal: React.FC = () => {
     pendingCheckoutPlanId,
     pendingBillingCycle,
     setPendingCheckoutPlanId,
+    setRegisterPreselectedTierId,
     tiers,
   } = useBroker();
 
@@ -50,6 +52,9 @@ export const LoginModal: React.FC = () => {
   const [regCompany, setRegCompany] = useState('');
   const [regPassword, setRegPassword] = useState('');
   const [regAgreeTerms, setRegAgreeTerms] = useState(true);
+  const [selectedRegTierId, setSelectedRegTierId] = useState<MembershipTierId | null>(
+    pendingCheckoutPlanId || null
+  );
 
   // Status states
   const [error, setError] = useState<string | null>(null);
@@ -64,8 +69,9 @@ export const LoginModal: React.FC = () => {
   useEffect(() => {
     if (showLoginModal) {
       setError(null);
+      setSelectedRegTierId(pendingCheckoutPlanId || null);
     }
-  }, [showLoginModal]);
+  }, [showLoginModal, pendingCheckoutPlanId]);
 
   if (!showLoginModal) return null;
 
@@ -74,7 +80,7 @@ export const LoginModal: React.FC = () => {
     setError(null);
   };
 
-  const handleLoginSubmit = (e: React.FormEvent) => {
+  const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
@@ -89,9 +95,7 @@ export const LoginModal: React.FC = () => {
 
     setIsLoading(true);
 
-    setTimeout(() => {
-      setIsLoading(false);
-
+    try {
       // Check for admin credentials
       if (
         (loginEmail.toLowerCase() === 'admin@admin.com' || loginEmail.toLowerCase() === 'admin') &&
@@ -101,8 +105,8 @@ export const LoginModal: React.FC = () => {
         return;
       }
 
-      // Client membership login - automatically logs into membership dashboard
-      const success = clientLogin(loginEmail, loginPassword);
+      // Client membership login - verifies active non-deleted profile on server/state
+      const success = await clientLogin(loginEmail, loginPassword);
       if (success) {
         setCurrentView('PORTAL');
         setPortalTab('OVERVIEW');
@@ -112,8 +116,14 @@ export const LoginModal: React.FC = () => {
         } catch {
           // ignore
         }
+      } else {
+        setError(
+          'Account not found, password invalid, or your membership profile has been deleted. Please register a new membership account to access the client dashboard.'
+        );
       }
-    }, 400);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleRegisterSubmit = (e: React.FormEvent) => {
@@ -141,7 +151,7 @@ export const LoginModal: React.FC = () => {
 
     setTimeout(() => {
       setIsLoading(false);
-      clientRegister(regFullName, regEmail, regCompany);
+      clientRegister(regFullName, regEmail, regCompany, selectedRegTierId, regPassword);
       setCurrentView('PORTAL');
       setPortalTab('OVERVIEW');
       setShowLoginModal(false);
@@ -249,6 +259,7 @@ export const LoginModal: React.FC = () => {
             <button
               type="button"
               onClick={() => {
+                setRegisterPreselectedTierId(pendingCheckoutPlanId || null);
                 setShowLoginModal(false);
                 setShowRegisterModal(true);
               }}
@@ -493,6 +504,29 @@ export const LoginModal: React.FC = () => {
                 </div>
               </div>
 
+              <div>
+                <label className="block text-xs font-medium text-slate-300 mb-1">
+                  Membership Tier Package <span className="text-slate-500 text-[11px]">(Optional · Manual Care Approval)</span>
+                </label>
+                <select
+                  value={selectedRegTierId || ''}
+                  onChange={(e) =>
+                    setSelectedRegTierId((e.target.value || null) as MembershipTierId | null)
+                  }
+                  className="w-full bg-slate-950 border border-slate-700 text-white px-3 py-2.5 rounded-xl text-xs focus:outline-none focus:border-emerald-500"
+                >
+                  <option value="">Choose Later (After Signing Up)</option>
+                  {tiers.map((tier) => (
+                    <option key={tier.id} value={tier.id}>
+                      {tier.name} — ${tier.price.toLocaleString()}/{tier.period} (Customer Care Review)
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Tiers are never auto-assigned. Customer Care Support manually reviews and approves all packages in the Admin Panel.
+                </p>
+              </div>
+
               <div className="pt-1">
                 <label className="flex items-start gap-2 cursor-pointer">
                   <input
@@ -516,13 +550,19 @@ export const LoginModal: React.FC = () => {
                 {isLoading ? (
                   <>
                     <div className="w-4 h-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
-                    <span>Creating Account & Loading Checkout...</span>
+                    <span>
+                      {pendingTier || selectedRegTierId
+                        ? 'Creating Account & Submitting Tier Request...'
+                        : 'Creating Member Account...'}
+                    </span>
                   </>
                 ) : (
                   <>
                     <span>
                       {pendingTier
                         ? `Create Account & Proceed to ${pendingTier.name}`
+                        : selectedRegTierId
+                        ? 'Create Account & Submit Tier Choice'
                         : 'Create Member Account'}
                     </span>
                     <ArrowRight className="w-4 h-4" />

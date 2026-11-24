@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import {
   MembershipTier,
   MembershipTierId,
@@ -22,6 +22,9 @@ import {
   BankWireDetails,
   TierTransitionNotice,
   SiteBranding,
+  EmailEventType,
+  EmailNotificationLog,
+  EmailAutomationConfig,
 } from '../types';
 import {
   INITIAL_MEMBERSHIP_TIERS,
@@ -37,8 +40,20 @@ import {
   INITIAL_REGISTRATION_APPLICATIONS,
   DEFAULT_HOMEPAGE_CMS_CONTENT,
   DEFAULT_SITE_BRANDING,
+  DEFAULT_EMAIL_AUTOMATION_CONFIG,
 } from '../data/initialData';
 import { phpApi } from '../services/phpApiService';
+import {
+  calculateTierLoanSchedule,
+  calculateRenewalDateFromCycle,
+  formatLongDate,
+  formatShortDate,
+  parseFlexibleDate,
+  resolveMembershipCycle,
+  toIsoDateString,
+  MembershipCyclePeriod,
+} from '../utils/loanDateEngine';
+import { dispatchAutomatedEmail } from '../services/emailService';
 
 export type ViewMode = 'PUBLIC' | 'PORTAL' | 'ADMIN' | 'CONFIRMATION_FLOW' | 'REGISTER';
 export type PublicPage = 
@@ -69,6 +84,7 @@ export type AdminTab =
   | 'PACKAGE_BUILDER' 
   | 'SUBSCRIBERS' 
   | 'SUPPORT_CONFIG' 
+  | 'EMAIL_NOTIFICATIONS'
   | 'AUDIT_LOGS' 
   | 'SECURITY'
   | 'CPANEL_MYSQL';
@@ -119,12 +135,19 @@ interface BrokerContextType {
   // Client Authentication & Conversion Funnel
   isClientAuthenticated: boolean;
   setIsClientAuthenticated: (auth: boolean) => void;
-  clientLogin: (email?: string, password?: string) => boolean;
-  clientRegister: (name: string, email: string, company?: string) => void;
+  clientLogin: (email?: string, password?: string) => Promise<boolean>;
+  clientRegister: (
+    name: string,
+    email: string,
+    company?: string,
+    chosenTierId?: MembershipTierId | null,
+    password?: string
+  ) => void;
+  completeRegistrationSignIn: (registrationId: string) => void;
   socialLogin: (provider: 'google' | 'apple') => void;
   clientLogout: () => void;
   restoreClientDashboard: () => void;
-  restoreActiveGoodStanding: (tierId?: MembershipTierId) => void;
+  requestMembershipTierSelection: (tierId: MembershipTierId) => void;
   pendingCheckoutPlanId: MembershipTierId | null;
   setPendingCheckoutPlanId: (planId: MembershipTierId | null) => void;
   pendingBillingCycle: 'quarterly' | 'annual';
@@ -154,9 +177,12 @@ interface BrokerContextType {
   setRegisterPreselectedTierId: (tierId: MembershipTierId | null) => void;
   registerInitialStep: number;
   setRegisterInitialStep: (step: number) => void;
-  openRegistrationWithTier: (tierId: MembershipTierId) => void;
-  openRegistrationWithStep: (step: number, tierId?: MembershipTierId) => void;
-  submitRegistration: (data: Omit<RegistrationApplication, 'id' | 'status' | 'submittedAt'>) => RegistrationApplication;
+  openRegistrationWithTier: (tierId?: MembershipTierId | null) => void;
+  openRegistrationWithStep: (step: number, tierId?: MembershipTierId | null) => void;
+  submitRegistration: (
+    data: Omit<RegistrationApplication, 'id' | 'status' | 'submittedAt'>,
+    password?: string
+  ) => RegistrationApplication;
   verifyRegistrationEmailOTP: (registrationId: string, otpCode: string) => boolean;
   resendRegistrationOTP: (registrationId: string) => string;
   approveRegistration: (registrationId: string, reviewedBy?: string) => void;
@@ -186,6 +212,11 @@ interface BrokerContextType {
   rejectMembershipUpgrade: (subscriberId: string, rejectionReason: string, rejectedByAgentName?: string) => void;
   resubmitClientProof: (proofFileName?: string, userNote?: string) => void;
   assignCareAgentToSubscriber: (subscriberId: string, agentName: string, agentEmail?: string) => void;
+  updateUserMembershipDate: (params: {
+    renewalDateIso?: string;
+    termStartIso?: string;
+    cycle?: MembershipCyclePeriod;
+  }) => void;
   submitLoan: (loan: Omit<LoanApplication, 'id' | 'applicationNumber' | 'status' | 'submittedAt' | 'lastUpdated' | 'tierAtSubmission'>) => string;
   updateApplicationStatus: (appId: string, status: ApplicationStatus, partnerBank?: string, underwriterNote?: string) => void;
   verifyDocument: (docId: string, approved: boolean, note: string) => void;
@@ -208,6 +239,24 @@ interface BrokerContextType {
   preselectedAmount: number | null;
   supportConfig: SupportAndCryptoConfig;
   updateSupportConfig: (config: SupportAndCryptoConfig) => void;
+
+  // Automated Email Notification System
+  emailConfig: EmailAutomationConfig;
+  emailLogs: EmailNotificationLog[];
+  updateEmailConfig: (config: EmailAutomationConfig) => Promise<void>;
+  resetEmailConfig: () => void;
+  clearEmailLogs: () => void;
+  syncEmailLogsFromServer: () => Promise<number>;
+  sendAutomatedEmail: (params: {
+    eventType: EmailEventType;
+    recipientEmail: string;
+    recipientName: string;
+    variables?: Record<string, string>;
+    relatedEntityId?: string;
+    forceTest?: boolean;
+  }) => Promise<EmailNotificationLog | null>;
+  sendTestEmail: (toEmail: string, toName?: string, message?: string) => Promise<EmailNotificationLog | null>;
+
   isAdminAuthenticated: boolean;
   authenticatedAdmin: AdminProfile | null;
   adminLogin: (email: string, password: string) => boolean;
@@ -219,6 +268,37 @@ interface BrokerContextType {
 const BrokerContext = createContext<BrokerContextType | undefined>(undefined);
 
 const STORAGE_KEY = 'sterling_wealth_broker_state_v1';
+
+interface RegisteredClientAccount {
+  userId: string;
+  email: string;
+  name: string;
+  company?: string;
+}
+
+interface DeletedAccountRecord {
+  userId?: string;
+  email: string;
+  deletedAt: string;
+}
+
+const UNAUTHENTICATED_CLIENT_USER: UserProfile = {
+  id: '',
+  name: 'Guest Member',
+  email: '',
+  phone: '',
+  company: '',
+  membershipTierId: null,
+  membershipStatus: 'UNASSIGNED',
+  memberSince: '',
+  renewalDate: '',
+  kycStatus: 'IN_REVIEW',
+  assignedBroker: 'Sterling Desk Underwriting',
+  brokerDirectLine: '+1 (800) 555-4921',
+  twoFactorEnabled: false,
+  totalActiveCapital: 0,
+  pendingUpgrade: null,
+};
 
 export const BrokerProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentView, setCurrentView] = useState<ViewMode>(() => {
@@ -278,6 +358,10 @@ export const BrokerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   });
 
+  const [adminAuthToken, setAdminAuthToken] = useState<string | null>(null);
+  const [clientAuthToken, setClientAuthToken] = useState<string | null>(null);
+  const pendingRegPasswordsRef = useRef<Record<string, string>>({});
+
   const [showAdminLoginModal, setShowAdminLoginModal] = useState<boolean>(false);
 
   const adminLogin = (email: string, pass: string): boolean => {
@@ -334,7 +418,14 @@ export const BrokerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       } catch {
         // ignore
       }
-      phpApi.login(cleanEmail, cleanPass).catch(() => {});
+      phpApi
+        .login(cleanEmail, cleanPass)
+        .then((res) => {
+          if (res?.success && res?.token) {
+            setAdminAuthToken(res.token);
+          }
+        })
+        .catch(() => {});
       return true;
     }
     return false;
@@ -343,8 +434,10 @@ export const BrokerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const adminLogout = () => {
     setIsAdminAuthenticated(false);
     setAuthenticatedAdmin(null);
+    setAdminAuthToken(null);
     localStorage.removeItem(`${STORAGE_KEY}_admin_auth`);
     localStorage.removeItem(`${STORAGE_KEY}_admin_profile`);
+    phpApi.logoutSession().catch(() => {});
     setCurrentView('PUBLIC');
     setPublicPage('home');
     try {
@@ -374,9 +467,21 @@ export const BrokerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   }, []);
 
   const handleSetCurrentView = (view: ViewMode) => {
-    if (view === 'PORTAL' && !isClientAuthenticated) {
-      setIsClientAuthenticated(true);
-      localStorage.setItem(`${STORAGE_KEY}_client_auth`, 'true');
+    if (view === 'PORTAL') {
+      const activeUser = findActiveClientRecord(currentUser.email, currentUser.id);
+      if (!isClientAuthenticated || !activeUser) {
+        setIsClientAuthenticated(false);
+        localStorage.removeItem(`${STORAGE_KEY}_client_auth`);
+        localStorage.setItem(`${STORAGE_KEY}_current_view`, 'PUBLIC');
+        setCurrentView('PUBLIC');
+        setShowLoginModal(true);
+        triggerToast(
+          'Membership Account Required',
+          'Please sign in with an active account or create a new membership account to access the client dashboard.',
+          'info'
+        );
+        return;
+      }
     }
     try {
       localStorage.setItem(`${STORAGE_KEY}_current_view`, view);
@@ -484,8 +589,81 @@ export const BrokerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   });
   const [showRegisterModal, setShowRegisterModal] = useState<boolean>(false);
   const [showLoginModal, setShowLoginModal] = useState<boolean>(false);
-  const [registerPreselectedTierId, setRegisterPreselectedTierId] = useState<MembershipTierId | null>('gold');
+  const [registerPreselectedTierId, setRegisterPreselectedTierId] = useState<MembershipTierId | null>(null);
   const [registerInitialStep, setRegisterInitialStep] = useState<number>(1);
+
+  // Deleted & Registered Client Accounts Registry (Enforces revocation when deleted from Admin Panel)
+  const [deletedAccounts, setDeletedAccounts] = useState<DeletedAccountRecord[]>(() => {
+    try {
+      const saved = localStorage.getItem(`${STORAGE_KEY}_deleted_accounts`);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return Array.isArray(parsed) ? parsed : [];
+      }
+    } catch {
+      // ignore
+    }
+    return [];
+  });
+
+  const [registeredClientAccounts, setRegisteredClientAccounts] = useState<RegisteredClientAccount[]>(() => {
+    try {
+      const saved = localStorage.getItem(`${STORAGE_KEY}_client_accounts`);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch {
+      // ignore
+    }
+    const seedMap = new Map<string, RegisteredClientAccount>();
+    const addSeed = (userId: string, email: string, name: string, company?: string) => {
+      const cleanEmail = email.trim().toLowerCase();
+      if (cleanEmail && !seedMap.has(cleanEmail)) {
+        seedMap.set(cleanEmail, { userId, email: cleanEmail, name, company });
+      }
+    };
+    addSeed(CURRENT_CLIENT_USER.id, CURRENT_CLIENT_USER.email, CURRENT_CLIENT_USER.name, CURRENT_CLIENT_USER.company);
+    INITIAL_SUBSCRIBERS.forEach((s) => addSeed(s.userId, s.email, s.name, s.company));
+    INITIAL_REGISTRATION_APPLICATIONS.forEach((r) =>
+      addSeed(r.userId, r.email, `${r.fullName.firstName} ${r.fullName.lastName}`.trim(), r.employment?.jobTitle)
+    );
+    return Array.from(seedMap.values());
+  });
+
+  const isAccountDeleted = (email?: string | null, userId?: string | null): boolean => {
+    const cleanEmail = (email || '').trim().toLowerCase();
+    const cleanUserId = (userId || '').trim();
+    return deletedAccounts.some(
+      (d) =>
+        (cleanEmail !== '' && d.email.toLowerCase() === cleanEmail) ||
+        (cleanUserId !== '' && Boolean(d.userId) && d.userId === cleanUserId)
+    );
+  };
+
+  const findActiveClientRecord = (email?: string | null, userId?: string | null): boolean => {
+    const cleanEmail = (email || '').trim().toLowerCase();
+    const cleanUserId = (userId || '').trim();
+    if (!cleanEmail && !cleanUserId) return false;
+    if (isAccountDeleted(cleanEmail, cleanUserId)) return false;
+
+    const inSubs = subscribers.some(
+      (s) =>
+        (cleanEmail !== '' && s.email.toLowerCase() === cleanEmail) ||
+        (cleanUserId !== '' && s.userId === cleanUserId)
+    );
+    const inRegs = registrationApplications.some(
+      (r) =>
+        (cleanEmail !== '' && r.email.toLowerCase() === cleanEmail) ||
+        (cleanUserId !== '' && r.userId === cleanUserId)
+    );
+    const inAccounts = registeredClientAccounts.some(
+      (a) =>
+        (cleanEmail !== '' && a.email.toLowerCase() === cleanEmail) ||
+        (cleanUserId !== '' && a.userId === cleanUserId)
+    );
+    return inSubs || inRegs || inAccounts;
+  };
 
   // Client Authentication State & Conversion Funnel
   const [isClientAuthenticated, setIsClientAuthenticated] = useState<boolean>(() => {
@@ -597,6 +775,157 @@ export const BrokerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     triggerToast('Branding Reset', 'Website logo and brand name restored to defaults.', 'info');
   };
 
+  // Automated Email Notification Configuration & Outbox Logs
+  const [emailConfig, setEmailConfig] = useState<EmailAutomationConfig>(() => {
+    try {
+      const saved = localStorage.getItem(`${STORAGE_KEY}_email_config`);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return {
+          ...DEFAULT_EMAIL_AUTOMATION_CONFIG,
+          ...parsed,
+          triggers: {
+            ...DEFAULT_EMAIL_AUTOMATION_CONFIG.triggers,
+            ...(parsed.triggers || {}),
+          },
+        };
+      }
+    } catch {
+      // ignore
+    }
+    return DEFAULT_EMAIL_AUTOMATION_CONFIG;
+  });
+
+  const [emailLogs, setEmailLogs] = useState<EmailNotificationLog[]>(() => {
+    try {
+      const saved = localStorage.getItem(`${STORAGE_KEY}_email_logs`);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return Array.isArray(parsed) ? parsed : [];
+      }
+    } catch {
+      // ignore
+    }
+    return [];
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(`${STORAGE_KEY}_email_logs`, JSON.stringify(emailLogs.slice(0, 150)));
+    } catch {
+      // ignore
+    }
+  }, [emailLogs]);
+
+  const updateEmailConfig = async (newConfig: EmailAutomationConfig) => {
+    setEmailConfig(newConfig);
+    try {
+      localStorage.setItem(`${STORAGE_KEY}_email_config`, JSON.stringify(newConfig));
+    } catch {
+      // ignore
+    }
+    await phpApi.saveEmailConfig(newConfig as unknown as Record<string, unknown>);
+    triggerToast('Email Settings Saved', 'Automated notification & cPanel SMTP preferences updated.', 'success');
+  };
+
+  const resetEmailConfig = () => {
+    setEmailConfig(DEFAULT_EMAIL_AUTOMATION_CONFIG);
+    try {
+      localStorage.removeItem(`${STORAGE_KEY}_email_config`);
+    } catch {
+      // ignore
+    }
+    triggerToast('Email Settings Reset', 'Notification settings restored to defaults.', 'info');
+  };
+
+  const clearEmailLogs = () => {
+    setEmailLogs([]);
+    try {
+      localStorage.removeItem(`${STORAGE_KEY}_email_logs`);
+    } catch {
+      // ignore
+    }
+    triggerToast('Outbox Log Cleared', 'Local email notification audit log cleared.', 'info');
+  };
+
+  const syncEmailLogsFromServer = async (): Promise<number> => {
+    const res = await phpApi.getEmailLogs();
+    if (res && res.success && Array.isArray(res.logs)) {
+      const serverLogs: EmailNotificationLog[] = res.logs.map((row: any) => ({
+        id: String(row.id),
+        eventType: (row.event_type || 'CUSTOM_TEST') as EmailEventType,
+        recipientEmail: String(row.recipient_email || ''),
+        recipientName: String(row.recipient_name || ''),
+        subject: String(row.subject || ''),
+        bodyHtml: String(row.body_html || ''),
+        bodyText: String(row.body_text || ''),
+        status: (row.status === 'SENT' || row.status === 'FAILED' ? row.status : 'QUEUED_LOCAL') as EmailNotificationLog['status'],
+        transport: String(row.transport || 'cpanel-smtp'),
+        errorMessage: row.error_message || undefined,
+        relatedEntityId: row.related_entity_id || undefined,
+        sentAt: String(row.sent_at || row.created_at || ''),
+      }));
+      setEmailLogs((prev) => {
+        const seen = new Set(serverLogs.map((l) => l.id));
+        return [...serverLogs, ...prev.filter((l) => !seen.has(l.id))].slice(0, 150);
+      });
+      return serverLogs.length;
+    }
+    return 0;
+  };
+
+  const sendAutomatedEmail = async (params: {
+    eventType: EmailEventType;
+    recipientEmail: string;
+    recipientName: string;
+    variables?: Record<string, string>;
+    relatedEntityId?: string;
+    forceTest?: boolean;
+  }): Promise<EmailNotificationLog | null> => {
+    const log = await dispatchAutomatedEmail({
+      ...params,
+      variables: {
+        brandName: siteBranding.siteName || emailConfig.fromName,
+        ...(params.variables || {}),
+      },
+      config: emailConfig,
+    });
+    if (log) {
+      setEmailLogs((prev) => [log, ...prev].slice(0, 150));
+    }
+    return log;
+  };
+
+  const sendTestEmail = async (
+    toEmail: string,
+    toName: string = 'Administrator',
+    message?: string
+  ): Promise<EmailNotificationLog | null> => {
+    const log = await sendAutomatedEmail({
+      eventType: 'CUSTOM_TEST',
+      recipientEmail: toEmail.trim(),
+      recipientName: toName.trim() || 'Administrator',
+      variables: {
+        message:
+          message?.trim() ||
+          `Automated email notification system verification test for ${siteBranding.siteName}.`,
+        subject: `Automated Email Test — ${siteBranding.siteName}`,
+        heading: 'Automated SMTP & Notification Verification',
+      },
+      forceTest: true,
+    });
+    if (log) {
+      if (log.status === 'FAILED') {
+        triggerToast('Test Email Failed', log.errorMessage || 'Unable to deliver via server SMTP/mail.', 'error');
+      } else if (log.status === 'SENT') {
+        triggerToast('Test Email Delivered', `Verification email sent to ${toEmail}.`, 'success');
+      } else {
+        triggerToast('Test Email Logged (Preview Mode)', `Rendered email queued in Outbox for ${toEmail}. Deploy to cPanel for live SMTP delivery.`, 'info');
+      }
+    }
+    return log;
+  };
+
   const [chatQuestionCount, setChatQuestionCount] = useState<number>(() => {
     try {
       const saved = localStorage.getItem(`${STORAGE_KEY}_chat_qcount`);
@@ -669,79 +998,361 @@ export const BrokerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return null;
   };
 
-  const clientLogin = (email?: string, _password?: string): boolean => {
-    setIsClientAuthenticated(true);
-    localStorage.setItem(`${STORAGE_KEY}_client_auth`, 'true');
-    localStorage.setItem(`${STORAGE_KEY}_current_view`, 'PORTAL');
+  const revokeDeletedClientSession = (deletedEmail?: string | null, deletedUserId?: string | null, reason?: string) => {
+    const cleanEmail = (deletedEmail || '').trim().toLowerCase();
+    const cleanUserId = (deletedUserId || '').trim();
 
-    let displayName = currentUser.name;
+    if (cleanEmail || cleanUserId) {
+      setDeletedAccounts((prev) => {
+        const already = prev.some(
+          (d) =>
+            (cleanEmail !== '' && d.email.toLowerCase() === cleanEmail) ||
+            (cleanUserId !== '' && Boolean(d.userId) && d.userId === cleanUserId)
+        );
+        if (already) return prev;
+        return [
+          ...prev,
+          {
+            userId: cleanUserId || undefined,
+            email: cleanEmail || 'deleted-account',
+            deletedAt: new Date().toISOString(),
+          },
+        ];
+      });
+      setRegisteredClientAccounts((prev) =>
+        prev.filter(
+          (a) =>
+            !(cleanEmail !== '' && a.email.toLowerCase() === cleanEmail) &&
+            !(cleanUserId !== '' && a.userId === cleanUserId)
+        )
+      );
+      setRegistrationApplications((prev) =>
+        prev.filter(
+          (r) =>
+            !(cleanEmail !== '' && r.email.toLowerCase() === cleanEmail) &&
+            !(cleanUserId !== '' && r.userId === cleanUserId)
+        )
+      );
+      setSubscribers((prev) =>
+        prev.filter(
+          (s) =>
+            !(cleanEmail !== '' && s.email.toLowerCase() === cleanEmail) &&
+            !(cleanUserId !== '' && s.userId === cleanUserId)
+        )
+      );
+    }
 
-    // Update currentUser with entered email or matching subscriber profile
-    if (email && email.trim()) {
-      const trimmedEmail = email.trim().toLowerCase();
-      const existingSub = subscribers.find((s) => s.email.toLowerCase() === trimmedEmail);
-      if (existingSub) {
-        displayName = existingSub.name;
-        const updatedUser: UserProfile = {
-          ...currentUser,
-          name: existingSub.name,
-          email: existingSub.email,
-          company: existingSub.company || currentUser.company,
-          membershipTierId: existingSub.membershipTierId,
-          membershipStatus: existingSub.paymentStatus === 'ACTIVE' ? 'ACTIVE' : 'RENEWAL_DUE',
-        };
-        setCurrentUser(updatedUser);
-        localStorage.setItem(`${STORAGE_KEY}_user`, JSON.stringify(updatedUser));
-      } else {
-        const namePart = email.split('@')[0].replace(/[._-]/g, ' ');
-        const formattedName = namePart.charAt(0).toUpperCase() + namePart.slice(1);
-        if (formattedName.length > 2) {
-          displayName = formattedName;
+    const matchesActiveSession =
+      (cleanEmail !== '' && currentUser.email.toLowerCase() === cleanEmail) ||
+      (cleanUserId !== '' && currentUser.id === cleanUserId) ||
+      (!cleanEmail && !cleanUserId);
+
+    if (matchesActiveSession) {
+      setClientAuthToken(null);
+      setIsClientAuthenticated(false);
+      setCurrentUser(UNAUTHENTICATED_CLIENT_USER);
+      localStorage.removeItem(`${STORAGE_KEY}_client_auth`);
+      localStorage.setItem(`${STORAGE_KEY}_user`, JSON.stringify(UNAUTHENTICATED_CLIENT_USER));
+      localStorage.setItem(`${STORAGE_KEY}_current_view`, 'PUBLIC');
+      phpApi.logoutSession().catch(() => {});
+      if (currentView === 'PORTAL') {
+        setCurrentView('PUBLIC');
+        setPublicPage('home');
+        setPortalTab('OVERVIEW');
+        try {
+          if (window.location.pathname.startsWith('/portal')) {
+            window.history.pushState({ page: 'home' }, '', '/');
+          }
+        } catch {
+          // ignore
         }
-        const updatedUser: UserProfile = {
-          ...currentUser,
-          name: displayName,
-          email: email.trim(),
-        };
-        setCurrentUser(updatedUser);
-        localStorage.setItem(`${STORAGE_KEY}_user`, JSON.stringify(updatedUser));
+      }
+      if (reason) {
+        triggerToast('Membership Profile Removed', reason, 'error');
+      }
+    }
+  };
+
+  const clientLogin = async (email?: string, _password?: string): Promise<boolean> => {
+    const cleanEmailInput = (email || '').trim();
+    const trimmedEmail = cleanEmailInput.toLowerCase();
+
+    if (!trimmedEmail) {
+      triggerToast('Email Required', 'Please enter your registered email address.', 'error');
+      return false;
+    }
+
+    if (!_password) {
+      triggerToast('Password Required', 'Please enter your account security password.', 'error');
+      return false;
+    }
+
+    // 1. Check PHP server authentication when live
+    const serverRes = await phpApi.login(cleanEmailInput, _password);
+    if (serverRes) {
+      if (!serverRes.success) {
+        const wasDeleted = Boolean((serverRes as { details?: { deleted?: boolean } }).details?.deleted);
+        if (wasDeleted) {
+          revokeDeletedClientSession(trimmedEmail);
+        }
+        setIsClientAuthenticated(false);
+        localStorage.removeItem(`${STORAGE_KEY}_client_auth`);
+        triggerToast(
+          wasDeleted ? 'Account Deleted or Not Found' : 'Authentication Failed',
+          serverRes.error || 'Account not found or has been deleted. Please create a new membership account.',
+          'error'
+        );
+        return false;
+      }
+      if (serverRes.token) {
+        setClientAuthToken(serverRes.token);
       }
     }
 
+    // 2. Enforce strict local & deleted-registry check (never auto-create accounts during login)
+    const isDeletedLocally = isAccountDeleted(trimmedEmail);
+    const hasLocalProfile = findActiveClientRecord(trimmedEmail);
+    const verifiedByServer = Boolean(serverRes?.success && serverRes?.user);
+
+    if (isDeletedLocally || (!hasLocalProfile && !verifiedByServer)) {
+      setIsClientAuthenticated(false);
+      localStorage.removeItem(`${STORAGE_KEY}_client_auth`);
+      triggerToast(
+        'Access Denied — Account Not Found',
+        'No active membership profile exists for this email (it may have been deleted from the Admin Panel). Please create a new membership account to access the client dashboard.',
+        'error'
+      );
+      return false;
+    }
+
+    const existingSub = subscribers.find((s) => s.email.toLowerCase() === trimmedEmail);
+    const existingReg = registrationApplications.find((r) => r.email.toLowerCase() === trimmedEmail);
+    const existingAccount = registeredClientAccounts.find((a) => a.email.toLowerCase() === trimmedEmail);
+    const serverUser = (serverRes?.user as Record<string, any> | undefined) || undefined;
+
+    let displayName = existingSub?.name || existingAccount?.name || serverUser?.name || currentUser.name;
+
+    if (existingSub) {
+      displayName = existingSub.name;
+      const isPendingReview =
+        existingSub.paymentStatus === 'PENDING' ||
+        existingSub.approvalStatus === 'AWAITING_PAYMENT_VERIFICATION';
+      const isDeclinedReview =
+        existingSub.approvalStatus === 'REJECTED' ||
+        existingSub.paymentStatus === 'PAST_DUE';
+
+      const hydratedPending =
+        (isPendingReview || isDeclinedReview) && existingSub.requestedTierId
+          ? {
+              id: existingSub.id,
+              requestId: existingSub.requestId || `REQ-${existingSub.id.slice(-4)}`,
+              requestedTierId: existingSub.requestedTierId,
+              requestedTierName: existingSub.requestedTierName || existingSub.membershipTierName,
+              requestedAmount: existingSub.amountPaid,
+              requestedAt: existingSub.dateJoined,
+              paymentMethod: existingSub.paymentMethod,
+              transactionId: existingSub.transactionId,
+              status: isDeclinedReview ? ('REJECTED' as const) : ('PENDING_VERIFICATION' as const),
+              proofStatus: existingSub.proofStatus || 'AWAITING_PROOF',
+              proofAttachmentName: existingSub.proofAttachmentName,
+              assignedCareAgent: existingSub.assignedCareAgent || supportConfig.agentName,
+              assignedCareEmail: existingSub.assignedCareEmail || supportConfig.agentEmail,
+              receiptNote: existingSub.paymentReceiptNote,
+              rejectionReason: existingSub.rejectionReason,
+              reviewedByAgent: existingSub.verifiedByAgent,
+              reviewedAt: existingSub.verifiedAt,
+              billingAddress: existingSub.billingAddress,
+            }
+          : null;
+
+      const derivedStatus: UserProfile['membershipStatus'] = existingSub.membershipTierId
+        ? existingSub.paymentStatus === 'ACTIVE'
+          ? 'ACTIVE'
+          : isPendingReview
+          ? 'PENDING_REVIEW'
+          : 'RENEWAL_DUE'
+        : hydratedPending
+        ? 'PENDING_REVIEW'
+        : 'UNASSIGNED';
+
+      const updatedUser: UserProfile = {
+        ...UNAUTHENTICATED_CLIENT_USER,
+        ...currentUser,
+        id: existingSub.userId || serverUser?.id || currentUser.id || `usr-${Date.now()}`,
+        name: existingSub.name,
+        email: existingSub.email,
+        phone: existingSub.phone || currentUser.phone || '',
+        company: existingSub.company || currentUser.company || 'Private Client',
+        membershipTierId: existingSub.membershipTierId,
+        membershipStatus: derivedStatus,
+        memberSince: currentUser.memberSince || existingSub.dateJoined || new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
+        kycStatus: existingReg ? (existingReg.status === 'APPROVED' ? 'VERIFIED' : 'IN_REVIEW') : 'VERIFIED',
+        pendingUpgrade: hydratedPending,
+      };
+      setCurrentUser(updatedUser);
+      localStorage.setItem(`${STORAGE_KEY}_user`, JSON.stringify(updatedUser));
+    } else if (existingReg) {
+      displayName = `${existingReg.fullName.firstName} ${existingReg.fullName.lastName}`.trim();
+      const updatedUser: UserProfile = {
+        ...UNAUTHENTICATED_CLIENT_USER,
+        ...currentUser,
+        id: existingReg.userId || `usr-${Date.now()}`,
+        name: displayName,
+        email: existingReg.email,
+        company: existingReg.employment?.jobTitle || 'Private Member',
+        membershipTierId: null,
+        membershipStatus: existingReg.selectedTierId ? 'PENDING_REVIEW' : 'UNASSIGNED',
+        kycStatus: existingReg.status === 'APPROVED' ? 'VERIFIED' : 'IN_REVIEW',
+        memberSince: currentUser.memberSince || new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
+        pendingUpgrade: null,
+      };
+      setCurrentUser(updatedUser);
+      localStorage.setItem(`${STORAGE_KEY}_user`, JSON.stringify(updatedUser));
+    } else if (existingAccount || serverUser) {
+      displayName = serverUser?.name || existingAccount?.name || cleanEmailInput;
+      const updatedUser: UserProfile = {
+        ...UNAUTHENTICATED_CLIENT_USER,
+        id: serverUser?.id || existingAccount?.userId || `usr-${Date.now()}`,
+        name: displayName,
+        email: serverUser?.email || existingAccount?.email || cleanEmailInput,
+        phone: serverUser?.phone || '',
+        company: serverUser?.company || existingAccount?.company || 'Private Client',
+        membershipTierId: (serverUser?.membership_tier_id as MembershipTierId) || null,
+        membershipStatus: (serverUser?.membership_status as UserProfile['membershipStatus']) || 'UNASSIGNED',
+        memberSince: serverUser?.member_since || new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
+        renewalDate: serverUser?.renewal_date || '',
+        kycStatus: (serverUser?.kyc_status as UserProfile['kycStatus']) || 'IN_REVIEW',
+        assignedBroker: serverUser?.assigned_broker || 'Sterling Desk Underwriting',
+        brokerDirectLine: serverUser?.broker_direct_line || '+1 (800) 555-4921',
+        twoFactorEnabled: true,
+        totalActiveCapital: Number(serverUser?.total_active_capital || 0),
+        pendingUpgrade: null,
+      };
+      setCurrentUser(updatedUser);
+      localStorage.setItem(`${STORAGE_KEY}_user`, JSON.stringify(updatedUser));
+    }
+
+    setIsClientAuthenticated(true);
+    localStorage.setItem(`${STORAGE_KEY}_client_auth`, 'true');
+    localStorage.setItem(`${STORAGE_KEY}_current_view`, 'PORTAL');
     setShowLoginModal(false);
     setShowRegisterModal(false);
-
-    // Automatically log user directly into their membership dashboard
     setCurrentView('PORTAL');
     setPortalTab('OVERVIEW');
 
-    // Clean up any pending plan stored so user lands cleanly on membership dashboard
-    try {
-      sessionStorage.removeItem('pendingPlanId');
-      sessionStorage.removeItem('pendingPlanCycle');
-      localStorage.removeItem('pendingPlanId');
-      localStorage.removeItem('pendingPlanCycle');
-    } catch {
-      // ignore
-    }
-
-    if (email) {
-      phpApi.login(email.trim(), _password || 'Password123!').catch(() => {});
+    const pendingPlan = retrieveAndClearPendingPlan();
+    if (pendingPlan) {
+      setSelectedCheckoutTier(pendingPlan);
     }
 
     triggerToast('Welcome Back!', `Signed in successfully as ${displayName}. Welcome to your membership dashboard.`, 'success');
     return true;
   };
 
-  const clientRegister = (name: string, email: string, company?: string) => {
+  const clientRegister = (
+    name: string,
+    email: string,
+    company?: string,
+    chosenTierId?: MembershipTierId | null,
+    password?: string
+  ) => {
+    const cleanEmail = (email || '').trim();
+    const cleanEmailLower = cleanEmail.toLowerCase();
+    const selectedTierObj = chosenTierId ? tiers.find((t) => t.id === chosenTierId) || null : null;
+    const userId = `usr-${Date.now()}`;
+    const now = new Date();
+    const dateFormatted = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    const reqId = `REQ-${Math.floor(1000 + Math.random() * 9000)}-MEMB`;
+
+    // Clear any prior deleted marker so the newly created membership account is active
+    setDeletedAccounts((prev) => prev.filter((d) => d.email.toLowerCase() !== cleanEmailLower));
+    setRegisteredClientAccounts((prev) => [
+      {
+        userId,
+        email: cleanEmailLower,
+        name: name.trim() || 'New Member',
+        company: company?.trim() || 'Private Client',
+      },
+      ...prev.filter((a) => a.email.toLowerCase() !== cleanEmailLower),
+    ]);
+
+    const pendingUpgradePayload = selectedTierObj
+      ? {
+          id: `upg-${Date.now()}`,
+          requestId: reqId,
+          requestedTierId: selectedTierObj.id,
+          requestedTierName: selectedTierObj.name,
+          requestedAmount: selectedTierObj.price,
+          requestedAt: `${dateFormatted} · ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+          paymentMethod: 'WIRE_TRANSFER' as const,
+          transactionId: reqId,
+          status: 'PENDING_VERIFICATION' as const,
+          proofStatus: 'AWAITING_PROOF' as const,
+          assignedCareAgent: supportConfig.agentName,
+          assignedCareEmail: supportConfig.agentEmail,
+          receiptNote: `Membership package "${selectedTierObj.name}" selected upon sign-up. Awaiting manual review & approval by Customer Care Support in the Admin Panel.`,
+          billingAddress: currentUser.billingAddress || {
+            streetAddress: 'Pending Address Verification',
+            city: 'New York',
+            state: 'NY',
+            zipCode: '10001',
+            country: 'United States',
+          },
+        }
+      : null;
+
+    if (selectedTierObj) {
+      const nextYear = new Date(now);
+      nextYear.setFullYear(now.getFullYear() + 1);
+      const pendingSub: MembershipSubscriber = {
+        id: `sub-${userId}`,
+        userId,
+        name: name.trim() || 'New Member',
+        email: cleanEmail || 'member@sterlingwealthbroker.com',
+        company: company?.trim() || 'Private Client',
+        requestId: reqId,
+        membershipTierId: null,
+        membershipTierName: 'No Active Tier',
+        requestedTierId: selectedTierObj.id,
+        requestedTierName: selectedTierObj.name,
+        paymentStatus: 'PENDING',
+        approvalStatus: 'AWAITING_PAYMENT_VERIFICATION',
+        proofStatus: 'AWAITING_PROOF',
+        dateJoined: dateFormatted,
+        amountPaid: selectedTierObj.price,
+        currency: 'USD',
+        paymentMethod: 'WIRE_TRANSFER',
+        transactionId: reqId,
+        billingAddress: currentUser.billingAddress || {
+          streetAddress: 'Pending Address Verification',
+          city: 'New York',
+          state: 'NY',
+          zipCode: '10001',
+          country: 'United States',
+        },
+        lastRenewalDate: dateFormatted,
+        nextBillingDate: nextYear.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+        assignedBroker: 'Sterling Desk Underwriting',
+        assignedCareAgent: supportConfig.agentName,
+        assignedCareEmail: supportConfig.agentEmail,
+        receiptVerified: false,
+        paymentReceiptNote: `User chose ${selectedTierObj.name} during account registration. Awaiting manual Customer Care Support review & approval in Admin Panel.`,
+      };
+      setSubscribers((prev) => [pendingSub, ...prev.filter((s) => s.email.toLowerCase() !== cleanEmailLower)]);
+    }
+
     const updatedUser: UserProfile = {
-      ...currentUser,
-      id: `usr-${Date.now()}`,
-      name: name || 'Alexander Vance',
-      email: email || 'alex@vanceholdings.com',
-      company: company || 'Vance Holdings LLC',
-      membershipStatus: 'ACTIVE',
-      memberSince: new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
+      ...UNAUTHENTICATED_CLIENT_USER,
+      id: userId,
+      name: name.trim() || 'New Member',
+      email: cleanEmail || 'member@sterlingwealthbroker.com',
+      company: company?.trim() || 'Private Client',
+      membershipTierId: null,
+      membershipStatus: selectedTierObj ? 'PENDING_REVIEW' : 'UNASSIGNED',
+      kycStatus: 'IN_REVIEW',
+      memberSince: now.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
+      twoFactorEnabled: true,
+      pendingUpgrade: pendingUpgradePayload,
     };
     setCurrentUser(updatedUser);
     localStorage.setItem(`${STORAGE_KEY}_user`, JSON.stringify(updatedUser));
@@ -750,8 +1361,6 @@ export const BrokerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     localStorage.setItem(`${STORAGE_KEY}_current_view`, 'PORTAL');
     setShowLoginModal(false);
     setShowRegisterModal(false);
-
-    // Automatically log user into their membership dashboard
     setCurrentView('PORTAL');
     setPortalTab('OVERVIEW');
 
@@ -764,22 +1373,212 @@ export const BrokerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       // ignore
     }
 
-    phpApi.register({ name, email, company, tier: 'gold' }).catch(() => {});
+    phpApi
+      .register({
+        userId,
+        name: updatedUser.name,
+        email: updatedUser.email,
+        ...(password ? { password } : {}),
+        company: updatedUser.company,
+        tier: selectedTierObj ? selectedTierObj.id : null,
+      })
+      .then((res) => {
+        if (res?.token) setClientAuthToken(res.token);
+      })
+      .catch(() => {});
 
-    triggerToast('Account Created!', `Welcome to your Sterling Wealth membership dashboard, ${updatedUser.name}.`, 'success');
+    sendAutomatedEmail({
+      eventType: 'WELCOME_REGISTRATION',
+      recipientEmail: updatedUser.email,
+      recipientName: updatedUser.name,
+      variables: {
+        registrationId: updatedUser.id,
+        tierName: selectedTierObj
+          ? `${selectedTierObj.name} (Pending Customer Care Review)`
+          : 'No Tier Selected Yet (Choose in Dashboard)',
+      },
+      relatedEntityId: updatedUser.id,
+    }).catch(() => {});
+
+    triggerToast(
+      'Account Created!',
+      selectedTierObj
+        ? `Welcome ${updatedUser.name}. Your selection (${selectedTierObj.name}) has been submitted for manual Customer Care Support approval.`
+        : `Welcome ${updatedUser.name}. Choose a membership tier package in your dashboard whenever you are ready.`,
+      'success'
+    );
+  };
+
+  const completeRegistrationSignIn = (registrationId: string) => {
+    const regApp = registrationApplications.find((a) => a.id === registrationId);
+    if (!regApp || isAccountDeleted(regApp.email, regApp.userId)) {
+      triggerToast(
+        'Registration Unavailable',
+        'This registration application has been removed. Please create a new membership account.',
+        'error'
+      );
+      return;
+    }
+
+    const fullName = `${regApp.fullName.firstName} ${regApp.fullName.lastName}`.trim();
+    const cleanEmailLower = regApp.email.trim().toLowerCase();
+    const chosenTier = regApp.selectedTierId
+      ? tiers.find((t) => t.id === regApp.selectedTierId) || null
+      : null;
+    const matchedSub = subscribers.find(
+      (s) => s.userId === regApp.userId || s.email.toLowerCase() === cleanEmailLower
+    );
+    const now = new Date();
+    const dateFormatted = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    const reqId = matchedSub?.requestId || `REQ-${regApp.id.slice(-4)}-MEMB`;
+
+    setDeletedAccounts((prev) =>
+      prev.filter((d) => d.email.toLowerCase() !== cleanEmailLower && d.userId !== regApp.userId)
+    );
+    setRegisteredClientAccounts((prev) => [
+      {
+        userId: regApp.userId,
+        email: cleanEmailLower,
+        name: fullName,
+        company: regApp.employment?.jobTitle || 'Private Member',
+      },
+      ...prev.filter((a) => a.email.toLowerCase() !== cleanEmailLower),
+    ]);
+
+    const updatedUser: UserProfile = {
+      ...UNAUTHENTICATED_CLIENT_USER,
+      id: regApp.userId,
+      name: fullName,
+      email: regApp.email,
+      company: regApp.employment?.jobTitle || 'Private Member',
+      membershipTierId: null,
+      membershipStatus: chosenTier ? 'PENDING_REVIEW' : 'UNASSIGNED',
+      kycStatus: regApp.status === 'APPROVED' ? 'VERIFIED' : 'IN_REVIEW',
+      memberSince: now.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
+      twoFactorEnabled: true,
+      billingAddress: {
+        streetAddress: regApp.residentialAddress.streetAddress,
+        city: regApp.residentialAddress.city,
+        state: regApp.residentialAddress.state,
+        zipCode: regApp.residentialAddress.zipCode,
+        country: regApp.residentialAddress.country,
+      },
+      pendingUpgrade: chosenTier
+        ? {
+            id: matchedSub?.id || `upg-${Date.now()}`,
+            requestId: reqId,
+            requestedTierId: chosenTier.id,
+            requestedTierName: chosenTier.name,
+            requestedAmount: chosenTier.price,
+            requestedAt: `${dateFormatted} · ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+            paymentMethod: matchedSub?.paymentMethod || 'WIRE_TRANSFER',
+            transactionId: matchedSub?.transactionId || reqId,
+            status: 'PENDING_VERIFICATION',
+            proofStatus: matchedSub?.proofStatus || 'AWAITING_PROOF',
+            assignedCareAgent: supportConfig.agentName,
+            assignedCareEmail: supportConfig.agentEmail,
+            receiptNote: `Selected ${chosenTier.name} during registration. Awaiting manual review & approval by Customer Care Support in the Admin Panel.`,
+            billingAddress: {
+              streetAddress: regApp.residentialAddress.streetAddress,
+              city: regApp.residentialAddress.city,
+              state: regApp.residentialAddress.state,
+              zipCode: regApp.residentialAddress.zipCode,
+              country: regApp.residentialAddress.country,
+            },
+          }
+        : null,
+    };
+
+    setCurrentUser(updatedUser);
+    localStorage.setItem(`${STORAGE_KEY}_user`, JSON.stringify(updatedUser));
+    setIsClientAuthenticated(true);
+    localStorage.setItem(`${STORAGE_KEY}_client_auth`, 'true');
+    localStorage.setItem(`${STORAGE_KEY}_current_view`, 'PORTAL');
+    setShowLoginModal(false);
+    setShowRegisterModal(false);
+    setCurrentView('PORTAL');
+    setPortalTab('OVERVIEW');
+
+    const regPassword = pendingRegPasswordsRef.current[regApp.id];
+    if (regPassword) {
+      delete pendingRegPasswordsRef.current[regApp.id];
+    }
+
+    phpApi
+      .register({
+        userId: regApp.userId,
+        name: fullName,
+        email: regApp.email,
+        ...(regPassword ? { password: regPassword } : {}),
+        company: regApp.employment?.jobTitle,
+        tier: regApp.selectedTierId,
+        billingAddress: regApp.residentialAddress as unknown as Record<string, unknown>,
+        kycRegistration: {
+          id: regApp.id,
+          loanReason: regApp.loanReason,
+          kycDocument: regApp.kycDocument,
+        },
+      })
+      .then((res) => {
+        if (res?.token) setClientAuthToken(res.token);
+      })
+      .catch(() => {});
+
+    triggerToast(
+      'Registration Complete!',
+      chosenTier
+        ? `Signed in as ${fullName}. Your ${chosenTier.name} request is queued for Customer Care Support approval.`
+        : `Signed in as ${fullName}. Choose a membership tier package in your dashboard anytime.`,
+      'success'
+    );
   };
 
   const socialLogin = (provider: 'google' | 'apple') => {
     const providerName = provider === 'google' ? 'Google' : 'Apple';
     const email = provider === 'google' ? 'alexander.vance@gmail.com' : 'alexander.vance@privaterelay.appleid.com';
+    const cleanEmailLower = email.toLowerCase();
+
+    if (isAccountDeleted(cleanEmailLower)) {
+      setIsClientAuthenticated(false);
+      localStorage.removeItem(`${STORAGE_KEY}_client_auth`);
+      triggerToast(
+        'Account Deleted — Re-Registration Required',
+        'Your previous membership registration and KYC profile were deleted from the Admin Panel. Please create a new membership account to regain access.',
+        'error'
+      );
+      return;
+    }
+
+    const existingSub = subscribers.find((s) => s.email.toLowerCase() === cleanEmailLower);
+    const pendingPlan = retrieveAndClearPendingPlan();
+    const assignedUserId = existingSub?.userId || `usr-${provider}-${Date.now()}`;
+
+    setRegisteredClientAccounts((prev) => [
+      {
+        userId: assignedUserId,
+        email: cleanEmailLower,
+        name: existingSub?.name || 'Alexander Vance',
+        company: existingSub?.company || 'Vance Holdings LLC',
+      },
+      ...prev.filter((a) => a.email.toLowerCase() !== cleanEmailLower),
+    ]);
+
     const updatedUser: UserProfile = {
-      ...currentUser,
-      id: `usr-${provider}-${Date.now()}`,
-      name: 'Alexander Vance',
+      ...UNAUTHENTICATED_CLIENT_USER,
+      id: assignedUserId,
+      name: existingSub?.name || 'Alexander Vance',
       email,
-      company: 'Vance Holdings LLC',
-      membershipStatus: 'ACTIVE',
+      company: existingSub?.company || 'Vance Holdings LLC',
+      membershipTierId: existingSub ? existingSub.membershipTierId : null,
+      membershipStatus: existingSub?.membershipTierId
+        ? existingSub.paymentStatus === 'ACTIVE'
+          ? 'ACTIVE'
+          : 'PENDING_REVIEW'
+        : 'UNASSIGNED',
+      kycStatus: existingSub ? 'VERIFIED' : 'IN_REVIEW',
       memberSince: new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
+      twoFactorEnabled: true,
+      pendingUpgrade: null,
     };
     setCurrentUser(updatedUser);
     localStorage.setItem(`${STORAGE_KEY}_user`, JSON.stringify(updatedUser));
@@ -788,31 +1587,41 @@ export const BrokerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     localStorage.setItem(`${STORAGE_KEY}_current_view`, 'PORTAL');
     setShowLoginModal(false);
     setShowRegisterModal(false);
-
-    // Automatically log user into their membership dashboard
     setCurrentView('PORTAL');
     setPortalTab('OVERVIEW');
 
-    try {
-      sessionStorage.removeItem('pendingPlanId');
-      sessionStorage.removeItem('pendingPlanCycle');
-      localStorage.removeItem('pendingPlanId');
-      localStorage.removeItem('pendingPlanCycle');
-    } catch {
-      // ignore
+    if (pendingPlan) {
+      setSelectedCheckoutTier(pendingPlan);
     }
+
+    phpApi
+      .register({
+        userId: assignedUserId,
+        name: updatedUser.name,
+        email: updatedUser.email,
+        company: updatedUser.company,
+        tier: existingSub?.membershipTierId || null,
+      })
+      .then((res) => {
+        if (res?.token) setClientAuthToken(res.token);
+      })
+      .catch(() => {});
 
     triggerToast(
       `Authenticated via ${providerName}`,
-      `Welcome to your membership dashboard, ${updatedUser.name}.`,
+      updatedUser.membershipTierId
+        ? `Welcome to your membership dashboard, ${updatedUser.name}.`
+        : `Welcome ${updatedUser.name}. Select a membership tier package for Customer Care review.`,
       'success'
     );
   };
 
   const clientLogout = () => {
     setIsClientAuthenticated(false);
+    setClientAuthToken(null);
     localStorage.removeItem(`${STORAGE_KEY}_client_auth`);
     localStorage.setItem(`${STORAGE_KEY}_current_view`, 'PUBLIC');
+    phpApi.logoutSession().catch(() => {});
     setCurrentView('PUBLIC');
     setPublicPage('home');
     setPortalTab('OVERVIEW');
@@ -828,6 +1637,15 @@ export const BrokerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const restoreClientDashboard = () => {
+    if (!findActiveClientRecord(currentUser.email, currentUser.id)) {
+      revokeDeletedClientSession(
+        currentUser.email,
+        currentUser.id,
+        'Your membership profile was deleted or does not exist. Please create a new membership account to access the client dashboard.'
+      );
+      setShowLoginModal(true);
+      return;
+    }
     setIsClientAuthenticated(true);
     localStorage.setItem(`${STORAGE_KEY}_client_auth`, 'true');
     localStorage.setItem(`${STORAGE_KEY}_current_view`, 'PORTAL');
@@ -841,38 +1659,133 @@ export const BrokerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     triggerToast('Client Dashboard Restored', `Welcome back to your client membership portal, ${currentUser.name}.`, 'success');
   };
 
-  const restoreActiveGoodStanding = (tierId?: MembershipTierId) => {
-    const targetTierId = tierId || currentUser.membershipTierId || 'gold';
-    const targetTier = tiers.find((t) => t.id === targetTierId) || tiers[1];
-    const updatedUser: UserProfile = {
-      ...currentUser,
-      membershipTierId: targetTier.id,
-      membershipStatus: 'ACTIVE',
-      pendingUpgrade: null,
-      renewalDate: 'January 15, 2027',
-    };
-    setCurrentUser(updatedUser);
-    localStorage.setItem(`${STORAGE_KEY}_user`, JSON.stringify(updatedUser));
-    
-    // Also sync subscriber record
-    setSubscribers((prev) =>
-      prev.map((s) => {
-        if (s.userId === currentUser.id || s.email.toLowerCase() === currentUser.email.toLowerCase()) {
-          return {
-            ...s,
-            membershipTierId: targetTier.id,
-            membershipTierName: targetTier.name,
-            requestedTierId: undefined,
-            requestedTierName: undefined,
-            paymentStatus: 'ACTIVE',
-            approvalStatus: 'APPROVED',
-          };
-        }
-        return s;
-      })
-    );
+  const requestMembershipTierSelection = (tierId: MembershipTierId) => {
+    const targetTier = tiers.find((t) => t.id === tierId);
+    if (!targetTier) return;
 
-    triggerToast('Active Standing Restored', `${targetTier.name} unlocked with full syndicate capacity ($${targetTier.maxLoanLimit.toLocaleString()}).`, 'success');
+    const now = new Date();
+    const nextYear = new Date(now);
+    nextYear.setFullYear(now.getFullYear() + 1);
+    const dateFormatted = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    const reqId = `REQ-${Math.floor(1000 + Math.random() * 9000)}-MEMB`;
+
+    const pendingSub: MembershipSubscriber = {
+      id: `sub-${currentUser.id}`,
+      userId: currentUser.id,
+      name: currentUser.name,
+      email: currentUser.email,
+      phone: currentUser.phone,
+      company: currentUser.company,
+      requestId: reqId,
+      membershipTierId: currentUser.membershipTierId,
+      membershipTierName: currentUser.membershipTierId
+        ? tiers.find((t) => t.id === currentUser.membershipTierId)?.name || 'Current Tier'
+        : 'No Active Tier',
+      requestedTierId: targetTier.id,
+      requestedTierName: targetTier.name,
+      paymentStatus: 'PENDING',
+      approvalStatus: 'AWAITING_PAYMENT_VERIFICATION',
+      proofStatus: 'AWAITING_PROOF',
+      dateJoined: dateFormatted,
+      amountPaid: targetTier.price,
+      currency: 'USD',
+      paymentMethod: 'WIRE_TRANSFER',
+      transactionId: reqId,
+      billingAddress: currentUser.billingAddress || {
+        streetAddress: 'Pending Address Verification',
+        city: 'New York',
+        state: 'NY',
+        zipCode: '10001',
+        country: 'United States',
+      },
+      lastRenewalDate: dateFormatted,
+      nextBillingDate: nextYear.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+      assignedBroker: targetTier.dedicatedBroker ? 'Julian Mercer (Managing Director)' : 'Sterling Desk Underwriting',
+      assignedCareAgent: supportConfig.agentName,
+      assignedCareEmail: supportConfig.agentEmail,
+      receiptVerified: false,
+      paymentReceiptNote: `Client selected ${targetTier.name} from Client Dashboard. Awaiting manual review & approval by Customer Care Support in Admin Panel.`,
+    };
+
+    setSubscribers((prev) => [
+      pendingSub,
+      ...prev.filter(
+        (s) => s.userId !== currentUser.id && s.email.toLowerCase() !== currentUser.email.toLowerCase()
+      ),
+    ]);
+
+    setCurrentUser((prev) => ({
+      ...prev,
+      membershipStatus: prev.membershipTierId ? prev.membershipStatus : 'PENDING_REVIEW',
+      pendingUpgrade: {
+        id: `upg-${Date.now()}`,
+        requestId: reqId,
+        requestedTierId: targetTier.id,
+        requestedTierName: targetTier.name,
+        requestedAmount: targetTier.price,
+        requestedAt: `${dateFormatted} · ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+        paymentMethod: 'WIRE_TRANSFER',
+        transactionId: reqId,
+        status: 'PENDING_VERIFICATION',
+        proofStatus: 'AWAITING_PROOF',
+        assignedCareAgent: supportConfig.agentName,
+        assignedCareEmail: supportConfig.agentEmail,
+        receiptNote: `Submitted ${targetTier.name} selection for Customer Care Support manual review & approval in the Admin Panel.`,
+        billingAddress: prev.billingAddress || pendingSub.billingAddress,
+      },
+    }));
+
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: `msg-${Date.now()}`,
+        senderRole: 'SYSTEM',
+        senderName: 'Sterling Customer Care Desk',
+        text: `Membership package request ${reqId} for ${targetTier.name} ($${targetTier.price.toLocaleString()}) has been logged for manual review by Customer Care Support (${supportConfig.agentName}). Features unlock once approved from the Admin Panel.`,
+        timestamp: now.toISOString().replace('T', ' ').slice(0, 16),
+        isEncrypted: true,
+      },
+    ]);
+
+    phpApi.requestMembershipTier(currentUser.id, targetTier.id).catch(() => {});
+
+    sendAutomatedEmail({
+      eventType: 'TIER_PAYMENT_SUBMITTED',
+      recipientEmail: currentUser.email,
+      recipientName: currentUser.name,
+      variables: {
+        requestId: reqId,
+        tierName: `${targetTier.name} (Pending Customer Care Review)`,
+        amount: `$${targetTier.price.toLocaleString()}`,
+        paymentMethod: 'Customer Care Review Queue',
+        careAgent: supportConfig.agentName,
+        careEmail: supportConfig.agentEmail,
+      },
+      relatedEntityId: reqId,
+    }).catch(() => {});
+
+    if (supportConfig.agentEmail && supportConfig.agentEmail.toLowerCase() !== currentUser.email.toLowerCase()) {
+      sendAutomatedEmail({
+        eventType: 'TIER_PAYMENT_SUBMITTED',
+        recipientEmail: supportConfig.agentEmail,
+        recipientName: supportConfig.agentName || 'Customer Care Support',
+        variables: {
+          requestId: reqId,
+          tierName: `${targetTier.name} (Client: ${currentUser.name})`,
+          amount: `$${targetTier.price.toLocaleString()}`,
+          paymentMethod: 'Manual Tier Selection Review',
+          careAgent: supportConfig.agentName,
+          careEmail: supportConfig.agentEmail,
+        },
+        relatedEntityId: reqId,
+      }).catch(() => {});
+    }
+
+    triggerToast(
+      'Tier Package Submitted for Review',
+      `${targetTier.name} (${reqId}) is now awaiting manual approval from Customer Care Support in the Admin Panel.`,
+      'info'
+    );
   };
 
   const handleSelectPlanFromHomepage = (
@@ -889,12 +1802,16 @@ export const BrokerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           }
         : baseTarget;
 
-    // 1. Check user's authentication state (isLoggedIn)
     if (isClientAuthenticated) {
-      // 2. State A: User IS Logged In
-      const currentTier = tiers.find((t) => t.id === currentUser.membershipTierId) || tiers[0];
+      const currentTier = currentUser.membershipTierId
+        ? tiers.find((t) => t.id === currentUser.membershipTierId) || null
+        : null;
 
-      // Fallback logic: If user already has an active tier, warn before proceeding to payment
+      if (!currentTier) {
+        setSelectedCheckoutTier(target);
+        return;
+      }
+
       if (currentTier.id === target.id) {
         setPendingTierTransition({
           currentTier,
@@ -915,9 +1832,6 @@ export const BrokerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         });
       }
     } else {
-      // 3. State B: User IS NOT Logged In (The Auth Gate)
-      // Do NOT redirect to payment gateway yet.
-      // Temporarily save choice in state, sessionStorage, localStorage & URL param so it isn't lost.
       setPendingCheckoutPlanId(tierId);
       setPendingBillingCycle(cycle);
       setRegisterPreselectedTierId(tierId);
@@ -934,11 +1848,10 @@ export const BrokerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         // ignore
       }
 
-      // Open the Auth Gate Modal with two clear options (Log In vs Register)
       setShowLoginModal(true);
       triggerToast(
         'Authentication Required',
-        `Please log in or create an account to complete your subscription to the ${target.name} plan (${cycle === 'annual' ? 'Annual Retainer' : 'Standard Tier Access'}).`,
+        `Please log in or create an account to select the ${target.name} plan (${cycle === 'annual' ? 'Annual Retainer' : 'Standard Tier Access'}). All packages require Customer Care Support approval.`,
         'info'
       );
     }
@@ -995,6 +1908,96 @@ export const BrokerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     localStorage.setItem(`${STORAGE_KEY}_user`, JSON.stringify(currentUser));
   }, [currentUser]);
 
+  useEffect(() => {
+    localStorage.setItem(`${STORAGE_KEY}_deleted_accounts`, JSON.stringify(deletedAccounts));
+  }, [deletedAccounts]);
+
+  useEffect(() => {
+    localStorage.setItem(`${STORAGE_KEY}_client_accounts`, JSON.stringify(registeredClientAccounts));
+  }, [registeredClientAccounts]);
+
+  // Continuous Client Session Guard: revoke access immediately if profile was deleted locally or across tabs
+  useEffect(() => {
+    if (!isClientAuthenticated) return;
+    if (!currentUser.email || !findActiveClientRecord(currentUser.email, currentUser.id)) {
+      revokeDeletedClientSession(
+        currentUser.email,
+        currentUser.id,
+        'Your membership registration and profile are no longer active. Please create a new membership account to access the client dashboard.'
+      );
+    }
+  }, [
+    isClientAuthenticated,
+    currentUser.email,
+    currentUser.id,
+    deletedAccounts,
+    registrationApplications,
+    subscribers,
+    registeredClientAccounts,
+  ]);
+
+  // Server Session Verification: if live PHP backend confirms user was deleted from MySQL, revoke access immediately
+  useEffect(() => {
+    if (!isClientAuthenticated || !currentUser.email) return;
+    let cancelled = false;
+    phpApi
+      .verifyUserSession({ userId: currentUser.id, email: currentUser.email }, clientAuthToken)
+      .then((res) => {
+        if (cancelled || !res) return;
+        if (res.exists === false || res.deleted === true) {
+          revokeDeletedClientSession(
+            currentUser.email,
+            currentUser.id,
+            'Your profile has been deleted from the server by an administrator. Create a new membership account to access the dashboard again.'
+          );
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [isClientAuthenticated, currentView, portalTab, currentUser.id, currentUser.email, clientAuthToken]);
+
+  // Cross-tab synchronization when Admin deletes a profile in another browser tab
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === `${STORAGE_KEY}_deleted_accounts` && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          if (Array.isArray(parsed)) setDeletedAccounts(parsed);
+        } catch {
+          // ignore
+        }
+      }
+      if (e.key === `${STORAGE_KEY}_registrations` && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          if (Array.isArray(parsed)) setRegistrationApplications(parsed);
+        } catch {
+          // ignore
+        }
+      }
+      if (e.key === `${STORAGE_KEY}_subscribers` && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          if (Array.isArray(parsed)) setSubscribers(parsed);
+        } catch {
+          // ignore
+        }
+      }
+      if (e.key === `${STORAGE_KEY}_client_accounts` && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          if (Array.isArray(parsed)) setRegisteredClientAccounts(parsed);
+        } catch {
+          // ignore
+        }
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
+
   // Live Toast notification ticker for social proof on public site
   useEffect(() => {
     const TOAST_EVENTS: Array<Omit<ToastNotice, 'id'>> = [
@@ -1025,20 +2028,28 @@ export const BrokerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const dismissToast = () => setActiveToast(null);
 
-  const openRegistrationWithTier = (tierId: MembershipTierId) => {
-    setRegisterPreselectedTierId(tierId);
+  const openRegistrationWithTier = (tierId: MembershipTierId | null = null) => {
+    setRegisterPreselectedTierId(tierId ?? null);
     setRegisterInitialStep(1);
     setShowRegisterModal(true);
-    const tierName = tiers.find((t) => t.id === tierId)?.name || 'Selected Tier';
-    triggerToast(
-      'Plan Attached to Registration',
-      `${tierName} has been attached to your sign-up context. Fill in your details to apply.`,
-      'info'
-    );
+    if (tierId) {
+      const tierName = tiers.find((t) => t.id === tierId)?.name || 'Selected Tier';
+      triggerToast(
+        'Plan Pre-Selected for Review',
+        `${tierName} has been attached as your requested package. Customer Care Support will review and approve it in the Admin Panel.`,
+        'info'
+      );
+    } else {
+      triggerToast(
+        'Membership Registration',
+        'Complete your registration details. You can choose a membership tier package now or after signing up.',
+        'info'
+      );
+    }
   };
 
-  const openRegistrationWithStep = (step: number, tierId?: MembershipTierId) => {
-    if (tierId) {
+  const openRegistrationWithStep = (step: number, tierId?: MembershipTierId | null) => {
+    if (tierId !== undefined) {
       setRegisterPreselectedTierId(tierId);
     }
     setRegisterInitialStep(step);
@@ -1046,15 +2057,27 @@ export const BrokerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const submitRegistration = (
-    data: Omit<RegistrationApplication, 'id' | 'status' | 'submittedAt'>
+    data: Omit<RegistrationApplication, 'id' | 'status' | 'submittedAt'>,
+    password?: string
   ): RegistrationApplication => {
     const regId = `REG-2026-${Math.floor(1000 + Math.random() * 9000)}`;
     const now = new Date();
     const dateFormatted = `${now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
     const initialOtp = Math.floor(100000 + Math.random() * 900000).toString();
+    const cleanEmailLower = data.email.trim().toLowerCase();
+
+    if (password) {
+      pendingRegPasswordsRef.current[regId] = password;
+    }
+
+    const chosenTier = data.selectedTierId
+      ? tiers.find((t) => t.id === data.selectedTierId) || null
+      : null;
 
     const newApp: RegistrationApplication = {
       ...data,
+      selectedTierId: chosenTier ? chosenTier.id : null,
+      selectedTierName: chosenTier ? chosenTier.name : 'Choose Later (After Sign-Up)',
       id: regId,
       status: 'PENDING',
       submittedAt: dateFormatted,
@@ -1062,7 +2085,132 @@ export const BrokerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       emailVerified: false,
     };
 
+    const fullApplicantName = `${data.fullName.firstName} ${data.fullName.lastName}`.trim();
+
+    // Clear prior deleted marker & register active account so new registration works seamlessly
+    setDeletedAccounts((prev) =>
+      prev.filter((d) => d.email.toLowerCase() !== cleanEmailLower && d.userId !== data.userId)
+    );
+    setRegisteredClientAccounts((prev) => [
+      {
+        userId: data.userId,
+        email: cleanEmailLower,
+        name: fullApplicantName || data.username,
+        company: data.employment?.jobTitle || 'Private Member',
+      },
+      ...prev.filter((a) => a.email.toLowerCase() !== cleanEmailLower),
+    ]);
+
     setRegistrationApplications((prev) => [newApp, ...prev.filter((a) => a.id !== regId)]);
+
+    // Also add submitted KYC document to vault documents linked to this userId
+    if (data.kycDocument) {
+      const kycVaultDoc: VaultDocument = {
+        id: `doc-kyc-${Date.now().toString().slice(-6)}`,
+        userId: data.userId,
+        type: 'GOVERNMENT_ID',
+        title: `KYC ID (${data.kycDocument.documentType})`,
+        fileName: data.kycDocument.fileName,
+        fileSize: data.kycDocument.fileSize,
+        mimeType: data.kycDocument.mimeType,
+        uploadDate: now.toISOString().slice(0, 10),
+        status: 'PENDING_REVIEW',
+        encryptionHash: data.kycDocument.hash,
+      };
+      setDocuments((prev) => [kycVaultDoc, ...prev]);
+    }
+
+    // If user chose a membership tier package during registration, stage it as PENDING for manual Customer Care Support review in Admin Panel (never auto-activated)
+    if (chosenTier) {
+      const nextYear = new Date(now);
+      nextYear.setFullYear(now.getFullYear() + 1);
+      const shortDate = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      const reqId = `REQ-${Math.floor(1000 + Math.random() * 9000)}-MEMB`;
+      const stagedSubscriber: MembershipSubscriber = {
+        id: `sub-${data.userId}`,
+        userId: data.userId,
+        name: fullApplicantName || data.username,
+        email: data.email,
+        company: data.employment?.jobTitle || 'Private Member',
+        requestId: reqId,
+        membershipTierId: null,
+        membershipTierName: 'No Active Tier',
+        requestedTierId: chosenTier.id,
+        requestedTierName: chosenTier.name,
+        paymentStatus: 'PENDING',
+        approvalStatus: 'AWAITING_PAYMENT_VERIFICATION',
+        proofStatus: 'AWAITING_PROOF',
+        dateJoined: shortDate,
+        amountPaid: chosenTier.price,
+        currency: 'USD',
+        paymentMethod: 'WIRE_TRANSFER',
+        transactionId: reqId,
+        billingAddress: {
+          streetAddress: data.residentialAddress.streetAddress,
+          city: data.residentialAddress.city,
+          state: data.residentialAddress.state,
+          zipCode: data.residentialAddress.zipCode,
+          country: data.residentialAddress.country,
+        },
+        lastRenewalDate: shortDate,
+        nextBillingDate: nextYear.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+        assignedBroker: chosenTier.dedicatedBroker ? 'Julian Mercer (Managing Director)' : 'Sterling Desk Underwriting',
+        assignedCareAgent: supportConfig.agentName,
+        assignedCareEmail: supportConfig.agentEmail,
+        receiptVerified: false,
+        paymentReceiptNote: `Chosen during registration (${regId}) — awaiting manual Customer Care Support review & approval in Admin Panel.`,
+      };
+      setSubscribers((prev) => [
+        stagedSubscriber,
+        ...prev.filter((s) => s.email.toLowerCase() !== cleanEmailLower),
+      ]);
+    }
+
+    // Sync registration & KYC dossier to PHP/MySQL server immediately
+    phpApi
+      .register({
+        userId: data.userId,
+        name: fullApplicantName || data.username,
+        email: data.email,
+        ...(password ? { password } : {}),
+        company: data.employment?.jobTitle || 'Private Member',
+        tier: chosenTier ? chosenTier.id : null,
+        billingAddress: data.residentialAddress as unknown as Record<string, unknown>,
+        kycRegistration: {
+          id: regId,
+          loanReason: data.loanReason,
+          kycDocument: data.kycDocument,
+        },
+      })
+      .then((res) => {
+        if (res?.token) setClientAuthToken(res.token);
+      })
+      .catch(() => {});
+
+    sendAutomatedEmail({
+      eventType: 'EMAIL_OTP_VERIFICATION',
+      recipientEmail: data.email,
+      recipientName: fullApplicantName,
+      variables: {
+        otpCode: initialOtp,
+        tierName: newApp.selectedTierName,
+        registrationId: regId,
+      },
+      relatedEntityId: regId,
+    }).catch(() => {});
+
+    if (emailConfig.adminAlertEmail && emailConfig.adminAlertEmail.toLowerCase() !== data.email.toLowerCase()) {
+      sendAutomatedEmail({
+        eventType: 'WELCOME_REGISTRATION',
+        recipientEmail: emailConfig.adminAlertEmail,
+        recipientName: 'Onboarding & Compliance Desk',
+        variables: {
+          registrationId: regId,
+          tierName: `${newApp.selectedTierName} (${fullApplicantName} · ${data.email})`,
+        },
+        relatedEntityId: regId,
+      }).catch(() => {});
+    }
 
     triggerToast(
       'Verification Email Dispatched',
@@ -1089,6 +2237,17 @@ export const BrokerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         )
       );
 
+      sendAutomatedEmail({
+        eventType: 'WELCOME_REGISTRATION',
+        recipientEmail: app.email,
+        recipientName: `${app.fullName.firstName} ${app.fullName.lastName}`.trim(),
+        variables: {
+          registrationId: app.id,
+          tierName: app.selectedTierName,
+        },
+        relatedEntityId: app.id,
+      }).catch(() => {});
+
       triggerToast(
         'Email Successfully Verified!',
         'Your identity and loan request have been submitted to the Admin Approval Desk.',
@@ -1107,6 +2266,19 @@ export const BrokerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       prev.map((a) => (a.id === registrationId ? { ...a, otpCode: newCode } : a))
     );
     const target = registrationApplications.find((a) => a.id === registrationId);
+    if (target?.email) {
+      sendAutomatedEmail({
+        eventType: 'EMAIL_OTP_VERIFICATION',
+        recipientEmail: target.email,
+        recipientName: `${target.fullName.firstName} ${target.fullName.lastName}`.trim(),
+        variables: {
+          otpCode: newCode,
+          tierName: target.selectedTierName,
+          registrationId: target.id,
+        },
+        relatedEntityId: target.id,
+      }).catch(() => {});
+    }
     triggerToast(
       'New OTP Code Sent',
       `A fresh code was sent to ${target?.email || 'your email'}. (Code: ${newCode})`,
@@ -1136,19 +2308,29 @@ export const BrokerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       )
     );
 
-    // If matches active client session, update status to VERIFIED
+    // If matches active client session, update KYC status ONLY (membership tiers are manually reviewed & approved separately by Customer Care Support)
     if (target.email.toLowerCase() === currentUser.email.toLowerCase()) {
       setCurrentUser((prev) => ({
         ...prev,
         kycStatus: 'VERIFIED',
-        membershipTierId: target.selectedTierId,
-        membershipStatus: 'ACTIVE',
       }));
     }
 
+    sendAutomatedEmail({
+      eventType: 'KYC_APPROVED',
+      recipientEmail: target.email,
+      recipientName: `${target.fullName.firstName} ${target.fullName.lastName}`.trim(),
+      variables: {
+        registrationId: target.id,
+        tierName: target.selectedTierName || 'Pending Customer Care Tier Approval',
+        reviewedBy: reviewer,
+      },
+      relatedEntityId: target.id,
+    }).catch(() => {});
+
     triggerToast(
-      'Account & KYC Approved!',
-      `Registration for ${target.fullName.firstName} ${target.fullName.lastName} approved by ${reviewer}. Member account active.`,
+      'KYC & Account Verified!',
+      `Registration for ${target.fullName.firstName} ${target.fullName.lastName} approved by ${reviewer}. Membership tier activation requires manual Customer Care Support approval in Tier Approval Queue.`,
       'success'
     );
   };
@@ -1173,6 +2355,17 @@ export const BrokerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           : a
       )
     );
+
+    sendAutomatedEmail({
+      eventType: 'KYC_REJECTED',
+      recipientEmail: target.email,
+      recipientName: `${target.fullName.firstName} ${target.fullName.lastName}`.trim(),
+      variables: {
+        registrationId: target.id,
+        reason: rejectionNote,
+      },
+      relatedEntityId: target.id,
+    }).catch(() => {});
 
     triggerToast(
       'Registration KYC Rejected',
@@ -1279,7 +2472,11 @@ export const BrokerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       company: currentUser.company,
       requestId: generatedRequestId,
       membershipTierId: isAutoActivated ? targetTier.id : currentUser.membershipTierId,
-      membershipTierName: isAutoActivated ? targetTier.name : (tiers.find((t) => t.id === currentUser.membershipTierId)?.name || 'Current Tier'),
+      membershipTierName: isAutoActivated
+        ? targetTier.name
+        : currentUser.membershipTierId
+        ? tiers.find((t) => t.id === currentUser.membershipTierId)?.name || 'Current Tier'
+        : 'No Active Tier',
       requestedTierId: targetTier.id,
       requestedTierName: targetTier.name,
       paymentStatus: isAutoActivated ? 'ACTIVE' : 'PENDING',
@@ -1305,7 +2502,10 @@ export const BrokerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         : `Payment submitted for $${targetTier.price.toLocaleString()} via ${paymentMethod}.`,
     };
 
-    setSubscribers((prev) => [pendingSubscriber, ...prev.filter((s) => s.userId !== currentUser.id)]);
+    setSubscribers((prev) => [
+      pendingSubscriber,
+      ...prev.filter((s) => s.userId !== currentUser.id && s.email.toLowerCase() !== currentUser.email.toLowerCase()),
+    ]);
 
     // 3. Update User Profile
     if (isAutoActivated) {
@@ -1338,6 +2538,7 @@ export const BrokerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         ...prev,
         name: effectiveName,
         billingAddress: effectiveAddress,
+        membershipStatus: prev.membershipTierId ? prev.membershipStatus : 'PENDING_REVIEW',
         pendingUpgrade: {
           id: `upg-${Date.now()}`,
           requestId: generatedRequestId,
@@ -1389,6 +2590,38 @@ export const BrokerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         wireProof,
       }).catch(() => {});
 
+      sendAutomatedEmail({
+        eventType: 'TIER_PAYMENT_SUBMITTED',
+        recipientEmail: currentUser.email,
+        recipientName: effectiveName,
+        variables: {
+          requestId: generatedRequestId,
+          tierName: targetTier.name,
+          amount: `$${targetTier.price.toLocaleString()}`,
+          paymentMethod,
+          careAgent: supportConfig.agentName,
+          careEmail: supportConfig.agentEmail,
+        },
+        relatedEntityId: generatedRequestId,
+      }).catch(() => {});
+
+      if (supportConfig.agentEmail && supportConfig.agentEmail.toLowerCase() !== currentUser.email.toLowerCase()) {
+        sendAutomatedEmail({
+          eventType: 'TIER_PAYMENT_SUBMITTED',
+          recipientEmail: supportConfig.agentEmail,
+          recipientName: supportConfig.agentName || 'Customer Care Desk',
+          variables: {
+            requestId: generatedRequestId,
+            tierName: `${targetTier.name} (Client: ${effectiveName})`,
+            amount: `$${targetTier.price.toLocaleString()}`,
+            paymentMethod,
+            careAgent: supportConfig.agentName,
+            careEmail: supportConfig.agentEmail,
+          },
+          relatedEntityId: generatedRequestId,
+        }).catch(() => {});
+      }
+
       if (wireProof) {
         triggerToast(
           'Wire Transfer Notice Dispatched',
@@ -1414,17 +2647,22 @@ export const BrokerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (!subscriber) return;
 
     const targetTierId = subscriber.requestedTierId || subscriber.membershipTierId;
-    const targetTier = tiers.find((t) => t.id === targetTierId) || tiers[1];
+    if (!targetTierId) {
+      triggerToast('No Tier Selected', 'This member has not selected a membership tier package yet.', 'warning');
+      return;
+    }
+    const targetTier = tiers.find((t) => t.id === targetTierId);
+    if (!targetTier) return;
     const verifyingAgent = approvedByAgentName || authenticatedAdmin?.name || supportConfig.agentName;
     const now = new Date();
-    const nextYear = new Date(now);
-    nextYear.setFullYear(now.getFullYear() + 1);
+    const resolvedCycle = resolveMembershipCycle(undefined, targetTier.period);
+    const nextRenewalDate = calculateRenewalDateFromCycle(now, resolvedCycle);
+    const shortTermStart = formatShortDate(now);
+    const shortRenewal = formatShortDate(nextRenewalDate);
+    const longRenewal = formatLongDate(nextRenewalDate);
+    const longTermStart = formatLongDate(now);
 
-    const verifiedAtStr = `${now.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    })} at ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+    const verifiedAtStr = `${shortTermStart} at ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
 
     // 1. Update subscriber in state
     setSubscribers((prev) =>
@@ -1445,8 +2683,8 @@ export const BrokerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             internalNote ||
             `Payment receipt verified and cleared by Customer Care Specialist ${verifyingAgent}. Membership tier officially upgraded.`,
           rejectionReason: undefined,
-          lastRenewalDate: now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-          nextBillingDate: nextYear.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+          lastRenewalDate: shortTermStart,
+          nextBillingDate: shortRenewal,
         };
       })
     );
@@ -1457,7 +2695,10 @@ export const BrokerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         ...prev,
         membershipTierId: targetTier.id,
         membershipStatus: 'ACTIVE',
-        renewalDate: nextYear.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }),
+        membershipCycle: resolvedCycle,
+        membershipTermStart: longTermStart,
+        renewalDate: longRenewal,
+        membershipDateUpdatedAt: new Date().toISOString(),
         pendingUpgrade: null,
       }));
     }
@@ -1488,6 +2729,18 @@ export const BrokerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setMessages((prev) => [...prev, approvalMsg]);
 
     phpApi.approveUpgrade(subscriberId, verifyingAgent, internalNote || 'Payment approved and verified').catch(() => {});
+
+    sendAutomatedEmail({
+      eventType: 'TIER_UPGRADE_APPROVED',
+      recipientEmail: subscriber.email,
+      recipientName: subscriber.name,
+      variables: {
+        tierName: targetTier.name,
+        requestId: subscriber.requestId || subscriber.id,
+        agentName: verifyingAgent,
+      },
+      relatedEntityId: subscriber.id,
+    }).catch(() => {});
 
     triggerToast(
       'Upgrade Approved!',
@@ -1562,6 +2815,18 @@ export const BrokerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       isEncrypted: true,
     };
     setMessages((prev) => [...prev, rejectMsg]);
+
+    sendAutomatedEmail({
+      eventType: 'TIER_UPGRADE_REJECTED',
+      recipientEmail: subscriber.email,
+      recipientName: subscriber.name,
+      variables: {
+        tierName: subscriber.requestedTierName || subscriber.membershipTierName,
+        requestId: subscriber.requestId || subscriber.id,
+        reason: rejectionReason || 'Payment verification unsuccessful.',
+      },
+      relatedEntityId: subscriber.id,
+    }).catch(() => {});
 
     triggerToast(
       'Payment Request Declined',
@@ -1679,12 +2944,99 @@ export const BrokerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     );
   };
 
+  const updateUserMembershipDate = (params: {
+    renewalDateIso?: string;
+    termStartIso?: string;
+    cycle?: MembershipCyclePeriod;
+  }) => {
+    if (!isClientAuthenticated || !currentUser.email) return;
+
+    const activeTierObj = currentUser.membershipTierId
+      ? tiers.find((t) => t.id === currentUser.membershipTierId) || null
+      : null;
+
+    const resolvedCycle = resolveMembershipCycle(
+      params.cycle ?? currentUser.membershipCycle,
+      activeTierObj?.period
+    );
+
+    const effectiveTermStartDate = params.termStartIso
+      ? parseFlexibleDate(params.termStartIso)
+      : parseFlexibleDate(currentUser.membershipTermStart || currentUser.memberSince || new Date());
+
+    const effectiveRenewalDate = params.renewalDateIso
+      ? parseFlexibleDate(params.renewalDateIso)
+      : calculateRenewalDateFromCycle(effectiveTermStartDate, resolvedCycle);
+
+    const longTermStart = formatLongDate(effectiveTermStartDate);
+    const longRenewal = formatLongDate(effectiveRenewalDate);
+    const shortTermStart = formatShortDate(effectiveTermStartDate);
+    const shortRenewal = formatShortDate(effectiveRenewalDate);
+    const nowIso = new Date().toISOString();
+
+    const updatedStatus: UserProfile['membershipStatus'] =
+      currentUser.membershipStatus === 'ACTIVE' || currentUser.membershipStatus === 'RENEWAL_DUE' || currentUser.membershipStatus === 'EXPIRED'
+        ? effectiveRenewalDate < parseFlexibleDate(new Date())
+          ? 'RENEWAL_DUE'
+          : 'ACTIVE'
+        : currentUser.membershipStatus;
+
+    setCurrentUser((prev) => ({
+      ...prev,
+      membershipCycle: resolvedCycle,
+      membershipTermStart: longTermStart,
+      renewalDate: longRenewal,
+      membershipDateUpdatedAt: nowIso,
+      membershipStatus: updatedStatus,
+    }));
+
+    setSubscribers((prev) =>
+      prev.map((s) => {
+        if (s.userId === currentUser.id || s.email.toLowerCase() === currentUser.email.toLowerCase()) {
+          return {
+            ...s,
+            lastRenewalDate: shortTermStart,
+            nextBillingDate: shortRenewal,
+          };
+        }
+        return s;
+      })
+    );
+
+    phpApi
+      .updateMembershipDates(
+        {
+          renewalDate: toIsoDateString(effectiveRenewalDate),
+          termStart: toIsoDateString(effectiveTermStartDate),
+        },
+        clientAuthToken
+      )
+      .catch(() => {});
+
+    triggerToast(
+      'Membership Date Updated',
+      `Your membership renewal schedule has been updated to ${longRenewal} (${resolvedCycle === 'quarter' ? 'Quarterly' : resolvedCycle === 'month' ? 'Monthly' : 'Annual'}).`,
+      'success'
+    );
+  };
+
   const submitLoan = (
     loanData: Omit<LoanApplication, 'id' | 'applicationNumber' | 'status' | 'submittedAt' | 'lastUpdated' | 'tierAtSubmission'>
   ) => {
     const appId = `app-${Date.now().toString().slice(-4)}`;
     const appNumber = `SWB-2026-${Math.floor(1000 + Math.random() * 9000)}`;
     const now = new Date().toISOString().replace('T', ' ').slice(0, 16);
+
+    const effectiveTierAtSubmission = currentUser.membershipTierId || 'unassigned';
+    const activeTierObj =
+      tiers.find((t) => t.id === effectiveTierAtSubmission) || tiers[0];
+    const computedSchedule = calculateTierLoanSchedule({
+      tier: activeTierObj,
+      loanAmount: loanData.requestedAmount,
+      termMonths: loanData.termMonths,
+      applicationDate: new Date(),
+      baselineTier: tiers.find((t) => t.id === 'silver') || tiers[0],
+    });
 
     const newApp: LoanApplication = {
       ...loanData,
@@ -1693,10 +3045,15 @@ export const BrokerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       status: 'PENDING',
       submittedAt: now,
       lastUpdated: now,
-      tierAtSubmission: currentUser.membershipTierId,
+      tierAtSubmission: effectiveTierAtSubmission,
+      estimatedApprovalDate: loanData.estimatedApprovalDate || computedSchedule.underwritingApprovalDateFormatted,
+      estimatedDisbursementDate: loanData.estimatedDisbursementDate || computedSchedule.disbursementDateFormatted,
+      firstPaymentDate: loanData.firstPaymentDate || computedSchedule.firstPaymentDateFormatted,
+      maturityDate: loanData.maturityDate || computedSchedule.maturityDateFormatted,
+      effectiveApr: loanData.effectiveApr ?? computedSchedule.effectiveApr,
       underwriterNotes: [
-        `Application received via Client Portal. Active tier: ${currentUser.membershipTierId.toUpperCase()}.`,
-        `Requested capital: $${loanData.requestedAmount.toLocaleString()} over ${loanData.termMonths} months.`,
+        `Application received via Client Portal. Active tier: ${effectiveTierAtSubmission.toUpperCase()} (Est. Disbursement: ${loanData.estimatedDisbursementDate || computedSchedule.disbursementDateFormatted}).`,
+        `Requested capital: $${loanData.requestedAmount.toLocaleString()} over ${loanData.termMonths} months (Maturity: ${loanData.maturityDate || computedSchedule.maturityDateFormatted}).`,
       ],
       assignedBroker: currentUser.assignedBroker || 'Julian Sterling (Principal Broker)',
     };
@@ -1715,7 +3072,7 @@ export const BrokerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       purpose: loanData.purpose,
       annualIncome: loanData.annualIncome,
       creditScore: loanData.creditScore,
-      tierAtSubmission: currentUser.membershipTierId,
+      tierAtSubmission: effectiveTierAtSubmission,
     }).catch(() => {});
 
     // Send chat ping
@@ -1731,6 +3088,18 @@ export const BrokerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       },
     ]);
 
+    sendAutomatedEmail({
+      eventType: 'LOAN_APPLICATION_SUBMITTED',
+      recipientEmail: currentUser.email,
+      recipientName: currentUser.name,
+      variables: {
+        applicationNumber: appNumber,
+        instrumentTitle: loanData.instrumentTitle,
+        requestedAmount: `$${loanData.requestedAmount.toLocaleString()}`,
+      },
+      relatedEntityId: appNumber,
+    }).catch(() => {});
+
     return appNumber;
   };
 
@@ -1741,6 +3110,7 @@ export const BrokerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     underwriterNote?: string
   ) => {
     const now = new Date().toISOString().replace('T', ' ').slice(0, 16);
+    const targetApp = applications.find((a) => a.id === appId);
     setApplications((prev) =>
       prev.map((app) => {
         if (app.id !== appId) return app;
@@ -1758,10 +3128,26 @@ export const BrokerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         };
       })
     );
+
+    if (targetApp?.applicantEmail) {
+      sendAutomatedEmail({
+        eventType: 'LOAN_STATUS_UPDATED',
+        recipientEmail: targetApp.applicantEmail,
+        recipientName: targetApp.applicantName || 'Applicant',
+        variables: {
+          applicationNumber: targetApp.applicationNumber,
+          status,
+          partnerBank: partnerBank || targetApp.partnerBank || 'Syndicate Lending Desk',
+          note: underwriterNote || `Your credit facility application moved to ${status}.`,
+        },
+        relatedEntityId: targetApp.applicationNumber,
+      }).catch(() => {});
+    }
   };
 
   const verifyDocument = (docId: string, approved: boolean, note: string) => {
     const activeAdmin = ADMIN_PROFILES.find((a) => a.role === activeAdminRole) || ADMIN_PROFILES[2];
+    const targetDoc = documents.find((d) => d.id === docId);
     setDocuments((prev) =>
       prev.map((doc) => {
         if (doc.id !== docId) return doc;
@@ -1773,6 +3159,32 @@ export const BrokerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         };
       })
     );
+
+    if (targetDoc) {
+      const matchedSub = subscribers.find((s) => s.userId === targetDoc.userId);
+      const targetEmail =
+        targetDoc.userId === currentUser.id
+          ? currentUser.email
+          : matchedSub?.email || currentUser.email;
+      const targetName =
+        targetDoc.userId === currentUser.id
+          ? currentUser.name
+          : matchedSub?.name || 'Member';
+      if (targetEmail) {
+        sendAutomatedEmail({
+          eventType: approved ? 'KYC_APPROVED' : 'KYC_REJECTED',
+          recipientEmail: targetEmail,
+          recipientName: targetName,
+          variables: {
+            registrationId: targetDoc.title,
+            tierName: matchedSub?.membershipTierName || 'Verified Member',
+            reviewedBy: `${activeAdmin.name}`,
+            reason: note || 'Document requires clearer scan or updated filing.',
+          },
+          relatedEntityId: targetDoc.id,
+        }).catch(() => {});
+      }
+    }
   };
 
   const uploadDocument = (docData: Omit<VaultDocument, 'id' | 'uploadDate' | 'status' | 'encryptionHash'>) => {
@@ -1877,14 +3289,124 @@ export const BrokerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     triggerToast('Upgrade Request Deleted', 'Pending tier upgrade request was removed from queue.', 'info');
   };
 
+  const cascadeDeleteUserProfile = (params: {
+    registrationId?: string;
+    subscriberId?: string;
+    userId?: string;
+    email?: string;
+  }) => {
+    const cleanEmail = (params.email || '').trim().toLowerCase();
+    const cleanUserId = (params.userId || '').trim();
+
+    if (params.registrationId) {
+      delete pendingRegPasswordsRef.current[params.registrationId];
+    }
+
+    // 1. Remove matching records across all entities
+    setRegistrationApplications((prev) =>
+      prev.filter(
+        (a) =>
+          a.id !== params.registrationId &&
+          !(cleanUserId !== '' && a.userId === cleanUserId) &&
+          !(cleanEmail !== '' && a.email.toLowerCase() === cleanEmail)
+      )
+    );
+    setSubscribers((prev) =>
+      prev.filter(
+        (s) =>
+          s.id !== params.subscriberId &&
+          !(cleanUserId !== '' && s.userId === cleanUserId) &&
+          !(cleanEmail !== '' && s.email.toLowerCase() === cleanEmail)
+      )
+    );
+    if (cleanUserId !== '') {
+      setDocuments((prev) => prev.filter((d) => d.userId !== cleanUserId));
+      setTransactions((prev) => prev.filter((t) => t.userId !== cleanUserId));
+    }
+    setApplications((prev) =>
+      prev.filter(
+        (app) =>
+          !(cleanUserId !== '' && app.userId === cleanUserId) &&
+          !(cleanEmail !== '' && app.applicantEmail.toLowerCase() === cleanEmail)
+      )
+    );
+
+    // 2. Revoke client profile, block dashboard access, and log out if active
+    revokeDeletedClientSession(
+      cleanEmail,
+      cleanUserId,
+      'Your membership registration and KYC profile were deleted from the Admin Panel. Please create a new membership account to regain access.'
+    );
+
+    // 3. Delete profile & all linked records from PHP/MySQL server
+    phpApi
+      .deleteUserProfile(
+        {
+          registrationId: params.registrationId,
+          subscriberId: params.subscriberId,
+          userId: cleanUserId || undefined,
+          email: cleanEmail || undefined,
+        },
+        adminAuthToken
+      )
+      .then((res) => {
+        if (res && !res.success) {
+          triggerToast(
+            'Server Sync Notice',
+            res.error || 'Local profile purged. Sign in to Admin Panel to finalize server deletion.',
+            'warning'
+          );
+        }
+      })
+      .catch(() => {});
+  };
+
   const deleteRegistrationApplication = (id: string) => {
-    setRegistrationApplications((prev) => prev.filter((a) => a.id !== id));
-    triggerToast('Registration Deleted', 'Member registration application has been deleted.', 'info');
+    const targetApp = registrationApplications.find((a) => a.id === id);
+    const linkedSub = targetApp
+      ? subscribers.find(
+          (s) => s.userId === targetApp.userId || s.email.toLowerCase() === targetApp.email.toLowerCase()
+        )
+      : undefined;
+
+    cascadeDeleteUserProfile({
+      registrationId: id,
+      subscriberId: linkedSub?.id,
+      userId: targetApp?.userId || linkedSub?.userId,
+      email: targetApp?.email || linkedSub?.email,
+    });
+
+    triggerToast(
+      'Registration, KYC & Server Profile Deleted',
+      targetApp
+        ? `${targetApp.fullName.firstName} ${targetApp.fullName.lastName} (${targetApp.email}) has been deleted from the server and blocked from dashboard access.`
+        : 'Member registration and user profile permanently deleted from server.',
+      'info'
+    );
   };
 
   const deleteSubscriber = (id: string) => {
-    setSubscribers((prev) => prev.filter((s) => s.id !== id && s.userId !== id));
-    triggerToast('Subscriber Deleted', 'Membership profile has been deleted.', 'info');
+    const targetSub = subscribers.find((s) => s.id === id || s.userId === id);
+    const linkedReg = targetSub
+      ? registrationApplications.find(
+          (a) => a.userId === targetSub.userId || a.email.toLowerCase() === targetSub.email.toLowerCase()
+        )
+      : undefined;
+
+    cascadeDeleteUserProfile({
+      registrationId: linkedReg?.id,
+      subscriberId: targetSub?.id || id,
+      userId: targetSub?.userId || linkedReg?.userId,
+      email: targetSub?.email || linkedReg?.email,
+    });
+
+    triggerToast(
+      'User Profile Permanently Deleted',
+      targetSub
+        ? `${targetSub.name} (${targetSub.email}) has been removed from the server and must register again for dashboard access.`
+        : 'Membership profile deleted from server.',
+      'info'
+    );
   };
 
   const deleteTransaction = (txId: string) => {
@@ -1913,6 +3435,8 @@ export const BrokerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     localStorage.removeItem(`${STORAGE_KEY}_subscribers`);
     localStorage.removeItem(`${STORAGE_KEY}_registrations`);
     localStorage.removeItem(`${STORAGE_KEY}_support_config`);
+    localStorage.removeItem(`${STORAGE_KEY}_deleted_accounts`);
+    localStorage.removeItem(`${STORAGE_KEY}_client_accounts`);
 
     setTiers(INITIAL_MEMBERSHIP_TIERS);
     setApplications(INITIAL_APPLICATIONS);
@@ -1923,6 +3447,15 @@ export const BrokerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setSubscribers(INITIAL_SUBSCRIBERS);
     setRegistrationApplications(INITIAL_REGISTRATION_APPLICATIONS);
     setSupportConfig(DEFAULT_SUPPORT_CRYPTO_CONFIG);
+    setDeletedAccounts([]);
+    setRegisteredClientAccounts([
+      {
+        userId: CURRENT_CLIENT_USER.id,
+        email: CURRENT_CLIENT_USER.email.toLowerCase(),
+        name: CURRENT_CLIENT_USER.name,
+        company: CURRENT_CLIENT_USER.company,
+      },
+    ]);
   };
 
   const updateSupportConfig = (newConfig: SupportAndCryptoConfig) => {
@@ -1982,10 +3515,11 @@ export const BrokerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         setIsClientAuthenticated,
         clientLogin,
         clientRegister,
+        completeRegistrationSignIn,
         socialLogin,
         clientLogout,
         restoreClientDashboard,
-        restoreActiveGoodStanding,
+        requestMembershipTierSelection,
         pendingCheckoutPlanId,
         setPendingCheckoutPlanId,
         pendingBillingCycle,
@@ -2026,6 +3560,7 @@ export const BrokerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         rejectMembershipUpgrade,
         resubmitClientProof,
         assignCareAgentToSubscriber,
+        updateUserMembershipDate,
         submitLoan,
         updateApplicationStatus,
         verifyDocument,
@@ -2048,6 +3583,14 @@ export const BrokerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         preselectedAmount,
         supportConfig,
         updateSupportConfig,
+        emailConfig,
+        emailLogs,
+        updateEmailConfig,
+        resetEmailConfig,
+        clearEmailLogs,
+        syncEmailLogsFromServer,
+        sendAutomatedEmail,
+        sendTestEmail,
         isAdminAuthenticated,
         authenticatedAdmin,
         adminLogin,

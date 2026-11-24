@@ -5,6 +5,7 @@
 
 require_once __DIR__ . '/../config/cors.php';
 require_once __DIR__ . '/../config/db.php';
+require_once __DIR__ . '/../config/mailer.php';
 
 $pdo = Database::getConnection();
 $action = $_GET['action'] ?? ($_POST['action'] ?? 'list');
@@ -121,6 +122,25 @@ switch ($action) {
             ':officer' => $officer,
             ':id'      => $docId
         ]);
+
+        $stmtDocUser = $pdo->prepare('SELECT u.email, u.name, d.title FROM vault_documents d JOIN users u ON u.id = d.user_id WHERE d.id = :id LIMIT 1');
+        $stmtDocUser->execute([':id' => $docId]);
+        $docUser = $stmtDocUser->fetch();
+        if ($docUser && !empty($docUser['email'])) {
+            EmailNotifier::dispatchEvent(
+                $pdo,
+                $decision === 'APPROVED' ? 'KYC_APPROVED' : 'KYC_REJECTED',
+                $docUser['email'],
+                $docUser['name'] ?? 'Valued Member',
+                [
+                    'registrationId' => $docId,
+                    'tierName'       => $docUser['title'] ?? 'Verified Vault Document',
+                    'reviewedBy'     => $officer,
+                    'reason'         => $notes,
+                ],
+                $docId
+            );
+        }
 
         sendJson([
             'message' => "Document KYC review completed ($status)",

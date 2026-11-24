@@ -263,7 +263,7 @@ export const Header: React.FC = () => {
   };
 
   const handleApplyNow = () => {
-    openRegistrationWithTier('gold');
+    openRegistrationWithTier(null);
     setIsLoginDropdownOpen(false);
     setIsMobileMenuOpen(false);
   };
@@ -280,7 +280,7 @@ export const Header: React.FC = () => {
   };
 
   const handleSignUpAction = () => {
-    openRegistrationWithTier('gold');
+    openRegistrationWithTier(null);
     setIsLoginDropdownOpen(false);
     setIsMobileMenuOpen(false);
   };

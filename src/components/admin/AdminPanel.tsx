@@ -14,6 +14,7 @@ import { AdminTierApprovalPanel } from '../flows/AdminTierApprovalPanel';
 import { AdminHomepageCMS } from './AdminHomepageCMS';
 import { AdminBrandingSettings } from './AdminBrandingSettings';
 import { AdminCPanelMySQL } from './AdminCPanelMySQL';
+import { AdminEmailNotifications } from './AdminEmailNotifications';
 import { AdminLoginPage } from './AdminLoginPage';
 
 export const AdminPanel: React.FC = () => {
@@ -38,6 +39,7 @@ export const AdminPanel: React.FC = () => {
         {adminTab === 'KYC_DESK' && <AdminKYCDesk />}
         {adminTab === 'PACKAGE_BUILDER' && <AdminPackageBuilder />}
         {adminTab === 'SUPPORT_CONFIG' && <AdminSupportConfig />}
+        {adminTab === 'EMAIL_NOTIFICATIONS' && <AdminEmailNotifications />}
         {adminTab === 'AUDIT_LOGS' && <AdminFinancialAudit />}
         {adminTab === 'SECURITY' && <AdminSecurityConsole />}
         {adminTab === 'CPANEL_MYSQL' && <AdminCPanelMySQL />}

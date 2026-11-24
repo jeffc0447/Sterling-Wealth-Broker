@@ -108,7 +108,7 @@ export const PublicFooter: React.FC = () => {
             <div className="flex flex-col sm:flex-row items-center gap-3 shrink-0 w-full lg:w-auto">
               <button
                 type="button"
-                onClick={() => openRegistrationWithTier('gold')}
+                onClick={() => openRegistrationWithTier(null)}
                 className="w-full sm:w-auto min-h-[44px] py-3 px-6 rounded-xl bg-emerald-500 hover:bg-emerald-400 active:bg-emerald-600 text-slate-950 font-bold text-xs sm:text-sm shadow-lg shadow-emerald-500/20 transition flex items-center justify-center gap-2 cursor-pointer active:scale-95"
               >
                 <UserPlus className="w-4 h-4" />
@@ -302,7 +302,7 @@ export const PublicFooter: React.FC = () => {
               <li>
                 <button
                   type="button"
-                  onClick={() => openRegistrationWithTier('gold')}
+                  onClick={() => openRegistrationWithTier(null)}
                   className="hover:text-emerald-400 transition-colors font-medium text-emerald-400 flex items-center gap-1.5 cursor-pointer"
                 >
                   <UserPlus className="w-3.5 h-3.5" />
@@ -431,7 +431,7 @@ export const PublicFooter: React.FC = () => {
               <li>
                 <button
                   type="button"
-                  onClick={() => openRegistrationWithTier('gold')}
+                  onClick={() => openRegistrationWithTier(null)}
                   className="hover:text-emerald-400 text-emerald-400/90 transition-colors flex items-center gap-1 cursor-pointer text-left min-h-[36px]"
                 >
                   <UserPlus className="w-3.5 h-3.5 text-emerald-400" />

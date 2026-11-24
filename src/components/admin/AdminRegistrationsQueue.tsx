@@ -121,7 +121,7 @@ export const AdminRegistrationsQueue: React.FC = () => {
               </h2>
             </div>
             <p className="text-xs text-slate-400 mt-0.5">
-              Review personal information, verify government-issued ID documents, and provision membership tiers.
+              Review personal information and verify government-issued ID documents. Membership tier packages are reviewed and approved separately by Customer Care Support.
             </p>
           </div>
 
@@ -236,7 +236,7 @@ export const AdminRegistrationsQueue: React.FC = () => {
                     <td className="py-3.5 px-4">
                       <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold bg-indigo-950/60 text-indigo-300 border border-indigo-700/40">
                         <Award className="w-3 h-3 text-indigo-400" />
-                        {app.selectedTierName}
+                        {app.selectedTierName || 'Choose Later (Not Selected)'}
                       </span>
                     </td>
 
@@ -332,7 +332,7 @@ export const AdminRegistrationsQueue: React.FC = () => {
               </div>
 
               <p className="text-xs text-slate-400 leading-relaxed">
-                Are you sure you want to delete this applicant profile and KYC record created by error? This will permanently remove the application from the compliance queue.
+                Are you sure you want to permanently delete this applicant's membership registration, KYC records, and server profile? The user will immediately lose all access to their client dashboard and cannot log back in unless they register a new membership account.
               </p>
 
               <div className="flex justify-end gap-2.5 pt-2">
@@ -348,12 +348,11 @@ export const AdminRegistrationsQueue: React.FC = () => {
                   onClick={() => {
                     deleteRegistrationApplication(appToDelete.id);
                     setAppToDelete(null);
-                    triggerToast('Application Deleted', `Purged ${appToDelete.fullName.firstName} ${appToDelete.fullName.lastName} from queue.`, 'info');
                   }}
-                  className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white font-semibold rounded-xl text-xs flex items-center gap-1.5 shadow-md shadow-rose-600/30"
+                  className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white font-semibold rounded-xl text-xs flex items-center gap-1.5 shadow-md shadow-rose-600/30 cursor-pointer"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
-                  <span>Confirm Delete</span>
+                  <span>Delete Profile & KYC</span>
                 </button>
               </div>
             </div>

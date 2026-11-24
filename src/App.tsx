@@ -29,7 +29,7 @@ const AppContent: React.FC = () => {
     showLoginModal,
     setShowLoginModal,
     triggerToast,
-    clientLogin,
+    completeRegistrationSignIn,
     pendingCheckoutPlanId,
     selectedCheckoutTier,
     setSelectedCheckoutTier,
@@ -93,8 +93,9 @@ const AppContent: React.FC = () => {
           registrationId={activeVerification.registrationId}
           email={activeVerification.email}
           onSuccess={() => {
+            const regId = activeVerification.registrationId;
             setActiveVerification(null);
-            clientLogin();
+            completeRegistrationSignIn(regId);
           }}
           onClose={() => setActiveVerification(null)}
         />

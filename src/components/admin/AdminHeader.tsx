@@ -18,6 +18,7 @@ import {
   Globe,
   ChevronLeft,
   ChevronRight,
+  Mail,
 } from 'lucide-react';
 
 export const AdminHeader: React.FC = () => {
@@ -30,6 +31,7 @@ export const AdminHeader: React.FC = () => {
     adminLogout,
     navigateToPublicPage,
     registrationApplications,
+    emailLogs,
   } = useBroker();
   const currentAdmin =
     authenticatedAdmin ||
@@ -128,6 +130,13 @@ export const AdminHeader: React.FC = () => {
       label: 'Bank Wire, Agent & Crypto',
       icon: <UserCheck className="w-4 h-4" />,
       roles: ['SUPER_ADMIN', 'CUSTOMER_SUPPORT', 'COMPLIANCE_OFFICER'],
+    },
+    {
+      id: 'EMAIL_NOTIFICATIONS',
+      label: 'Email Notifications',
+      icon: <Mail className="w-4 h-4 text-emerald-400" />,
+      roles: ['SUPER_ADMIN', 'CUSTOMER_SUPPORT', 'COMPLIANCE_OFFICER', 'LOAN_SPECIALIST'],
+      badgeCount: emailLogs.length,
     },
     {
       id: 'AUDIT_LOGS',

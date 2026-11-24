@@ -118,7 +118,7 @@ export const AboutUsPage: React.FC = () => {
             {/* Quick CTA Pair */}
             <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
               <button
-                onClick={() => openRegistrationWithTier('gold')}
+                onClick={() => openRegistrationWithTier(null)}
                 className="w-full sm:w-auto py-3 px-6 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-sm shadow-lg shadow-emerald-500/20 transition flex items-center justify-center gap-2 cursor-pointer"
               >
                 <span>Apply for Membership Tier</span>
@@ -820,7 +820,7 @@ export const AboutUsPage: React.FC = () => {
 
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4">
               <button
-                onClick={() => openRegistrationWithTier('gold')}
+                onClick={() => openRegistrationWithTier(null)}
                 className="w-full sm:w-auto py-3 px-8 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-sm shadow-lg shadow-emerald-500/20 transition flex items-center justify-center gap-2 cursor-pointer"
               >
                 <span>Apply for Membership Now</span>

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useBroker } from '../../context/BrokerContext';
 import { TransactionRecord } from '../../types';
+import { calculateMembershipTimeline } from '../../utils/loanDateEngine';
 import { Receipt, Download, CheckCircle2, CreditCard, Landmark, QrCode, X, Printer, ShieldCheck } from 'lucide-react';
 
 export const PaymentHistory: React.FC = () => {
@@ -9,6 +10,13 @@ export const PaymentHistory: React.FC = () => {
 
   const userTxs = transactions.filter((t) => t.userId === currentUser.id);
   const currentTier = tiers.find((t) => t.id === currentUser.membershipTierId);
+  const membershipTimeline = calculateMembershipTimeline({
+    memberSince: currentUser.memberSince,
+    termStart: currentUser.membershipTermStart || currentUser.memberSince,
+    renewalDate: currentUser.renewalDate,
+    cycle: currentUser.membershipCycle,
+    tierPeriod: currentTier?.period,
+  });
 
   const getMethodBadge = (method: TransactionRecord['paymentMethod']) => {
     switch (method) {
@@ -74,13 +82,23 @@ export const PaymentHistory: React.FC = () => {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <span className="text-[10px] font-mono uppercase tracking-wider text-amber-400 font-semibold">
-              Active Retainer Schedule
+              {currentTier ? 'Active Retainer Schedule' : 'Membership Retainer Status'}
             </span>
             <h2 className="font-display text-xl font-bold text-white mt-1">
-              {currentTier?.name} · Active
+              {currentTier
+                ? `${currentTier.name} · Active`
+                : currentUser.pendingUpgrade?.status === 'PENDING_VERIFICATION'
+                ? `${currentUser.pendingUpgrade.requestedTierName} · Pending Customer Care Approval`
+                : 'No Active Membership Tier'}
             </h2>
-            <p className="text-xs text-slate-400 mt-0.5">
-              Renewal Date: <strong className="text-slate-200">{currentUser.renewalDate}</strong> · Billed ${currentTier?.price.toLocaleString()}/{currentTier?.period}
+            <p className="text-xs text-slate-400 mt-0.5 tabular-nums">
+              {currentTier ? (
+                <>
+                  Renewal Date: <strong className="text-slate-200">{membershipTimeline.renewalDateFormatted}</strong> ({membershipTimeline.remainingDays >= 0 ? `${membershipTimeline.remainingDays} days left` : 'Renewal Due'}) · Billed ${currentTier.price.toLocaleString()}/{currentTier.period}
+                </>
+              ) : (
+                `Preferred Renewal Target: ${membershipTimeline.renewalDateFormatted} · Select a membership tier package in Overview to submit for Customer Care Support approval.`
+              )}
             </p>
           </div>
 
@@ -94,7 +112,7 @@ export const PaymentHistory: React.FC = () => {
               }}
               className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-semibold rounded-xl text-xs transition-colors"
             >
-              Modify / Upgrade Tier
+              {currentTier ? 'Modify / Upgrade Tier' : 'Choose Membership Tier'}
             </button>
           </div>
         </div>

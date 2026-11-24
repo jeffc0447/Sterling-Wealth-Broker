@@ -130,7 +130,7 @@ export const AdminLoanManagement: React.FC = () => {
                       <div className="flex items-center justify-between text-[10px]">
                         <span className="font-mono text-slate-400">{app.applicationNumber}</span>
                         <span className="font-mono uppercase text-amber-400 font-semibold">
-                          {app.tierAtSubmission}
+                          {app.tierAtSubmission === 'unassigned' ? 'No Tier' : app.tierAtSubmission}
                         </span>
                       </div>
 
@@ -202,7 +202,7 @@ export const AdminLoanManagement: React.FC = () => {
                       ${app.requestedAmount.toLocaleString()}
                     </td>
                     <td className="py-3 font-mono uppercase text-amber-400">
-                      {app.tierAtSubmission}
+                      {app.tierAtSubmission === 'unassigned' ? 'No Tier' : app.tierAtSubmission}
                     </td>
                     <td className="py-3">
                       <span className="text-[11px] font-medium text-slate-200">

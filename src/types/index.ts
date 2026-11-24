@@ -67,7 +67,12 @@ export interface LoanApplication {
   assignedBroker: string;
   submittedAt: string;
   lastUpdated: string;
-  tierAtSubmission: MembershipTierId;
+  tierAtSubmission: MembershipTierId | 'unassigned';
+  estimatedApprovalDate?: string;
+  estimatedDisbursementDate?: string;
+  firstPaymentDate?: string;
+  maturityDate?: string;
+  effectiveApr?: number;
 }
 
 export type DocumentType = 
@@ -197,7 +202,7 @@ export interface MembershipSubscriber {
   phone?: string;
   company?: string;
   requestId?: string;
-  membershipTierId: MembershipTierId;
+  membershipTierId: MembershipTierId | null;
   membershipTierName: string;
   requestedTierId?: MembershipTierId;
   requestedTierName?: string;
@@ -259,10 +264,13 @@ export interface UserProfile {
   email: string;
   phone: string;
   company?: string;
-  membershipTierId: MembershipTierId;
-  membershipStatus: 'ACTIVE' | 'EXPIRED' | 'RENEWAL_DUE';
+  membershipTierId: MembershipTierId | null;
+  membershipStatus: 'UNASSIGNED' | 'PENDING_REVIEW' | 'ACTIVE' | 'EXPIRED' | 'RENEWAL_DUE';
   memberSince: string;
   renewalDate: string;
+  membershipCycle?: 'month' | 'quarter' | 'year';
+  membershipTermStart?: string;
+  membershipDateUpdatedAt?: string;
   kycStatus: 'VERIFIED' | 'IN_REVIEW' | 'ACTION_REQUIRED';
   assignedBroker: string;
   brokerDirectLine: string;
@@ -427,7 +435,7 @@ export interface RegistrationApplication {
   };
   loanReason: string;
   kycDocument: KYCDocumentInfo;
-  selectedTierId: MembershipTierId;
+  selectedTierId: MembershipTierId | null;
   selectedTierName: string;
   emailVerified: boolean;
   emailVerifiedAt?: string;
@@ -446,4 +454,60 @@ export interface SiteBranding {
   logoFileName?: string;
   updatedAt?: string;
 }
+
+export type EmailEventType =
+  | 'EMAIL_OTP_VERIFICATION'
+  | 'WELCOME_REGISTRATION'
+  | 'KYC_APPROVED'
+  | 'KYC_REJECTED'
+  | 'TIER_PAYMENT_SUBMITTED'
+  | 'TIER_UPGRADE_APPROVED'
+  | 'TIER_UPGRADE_REJECTED'
+  | 'LOAN_APPLICATION_SUBMITTED'
+  | 'LOAN_STATUS_UPDATED'
+  | 'CONTACT_INQUIRY'
+  | 'CONTACT_INQUIRY_DESK'
+  | 'CUSTOM_TEST';
+
+export interface EmailNotificationLog {
+  id: string;
+  eventType: EmailEventType;
+  recipientEmail: string;
+  recipientName: string;
+  subject: string;
+  bodyHtml: string;
+  bodyText: string;
+  status: 'SENT' | 'QUEUED_LOCAL' | 'FAILED';
+  transport: string;
+  errorMessage?: string;
+  relatedEntityId?: string;
+  sentAt: string;
+}
+
+export interface EmailAutomationConfig {
+  enabled: boolean;
+  driver: 'smtp' | 'mail';
+  fromName: string;
+  fromEmail: string;
+  replyToEmail: string;
+  adminAlertEmail: string;
+  smtpHost: string;
+  smtpPort: number;
+  smtpEncryption: 'ssl' | 'tls' | 'none';
+  smtpUsername: string;
+  smtpPassword?: string;
+  triggers: {
+    EMAIL_OTP_VERIFICATION: boolean;
+    WELCOME_REGISTRATION: boolean;
+    KYC_APPROVED: boolean;
+    KYC_REJECTED: boolean;
+    TIER_PAYMENT_SUBMITTED: boolean;
+    TIER_UPGRADE_APPROVED: boolean;
+    TIER_UPGRADE_REJECTED: boolean;
+    LOAN_APPLICATION_SUBMITTED: boolean;
+    LOAN_STATUS_UPDATED: boolean;
+    CONTACT_INQUIRY: boolean;
+  };
+}
+
 

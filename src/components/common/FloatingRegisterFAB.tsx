@@ -28,7 +28,7 @@ export const FloatingRegisterFAB: React.FC = () => {
         // ignore
       }
     } else {
-      openRegistrationWithTier('gold');
+      openRegistrationWithTier(null);
     }
   };
 

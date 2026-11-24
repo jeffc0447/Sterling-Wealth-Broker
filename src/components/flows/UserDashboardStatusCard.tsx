@@ -1,6 +1,14 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useBroker } from '../../context/BrokerContext';
 import { MembershipTierId } from '../../types';
+import {
+  calculateMembershipTimeline,
+  calculateRenewalDateFromCycle,
+  formatLongDate,
+  parseFlexibleDate,
+  toIsoDateString,
+  MembershipCyclePeriod,
+} from '../../utils/loanDateEngine';
 import {
   Clock,
   CheckCircle2,
@@ -20,6 +28,7 @@ import {
   UploadCloud,
   Check,
   ChevronRight,
+  Calendar,
 } from 'lucide-react';
 
 export const UserDashboardStatusCard: React.FC = () => {
@@ -30,9 +39,9 @@ export const UserDashboardStatusCard: React.FC = () => {
     setCurrentView,
     triggerToast,
     resubmitClientProof,
-    upgradeTier,
+    requestMembershipTierSelection,
     setSelectedCheckoutTier,
-    restoreActiveGoodStanding,
+    updateUserMembershipDate,
   } = useBroker();
 
   const [isResubmitModalOpen, setIsResubmitModalOpen] = useState(false);
@@ -41,18 +50,90 @@ export const UserDashboardStatusCard: React.FC = () => {
   const [isSubmittingProof, setIsSubmittingProof] = useState(false);
   const [isTierUpgradeSelectorOpen, setIsTierUpgradeSelectorOpen] = useState(false);
 
-  // Active membership tier details
-  const activeTier = tiers.find((t) => t.id === currentUser.membershipTierId) || tiers[0];
+  // Interactive Membership Date state
+  const [nowDate, setNowDate] = useState<Date>(() => new Date());
+  const [isDateEditorOpen, setIsDateEditorOpen] = useState(false);
+
+  // Active membership tier details (null when user has not yet been manually approved for a tier)
+  const activeTier = currentUser.membershipTierId
+    ? tiers.find((t) => t.id === currentUser.membershipTierId) || null
+    : null;
   const pending = currentUser.pendingUpgrade;
-  const pendingTargetTier = tiers.find((t) => t.id === pending?.requestedTierId);
+
+  const membershipTimeline = useMemo(
+    () =>
+      calculateMembershipTimeline({
+        memberSince: currentUser.memberSince,
+        termStart: currentUser.membershipTermStart || currentUser.memberSince,
+        renewalDate: currentUser.renewalDate,
+        cycle: currentUser.membershipCycle,
+        tierPeriod: activeTier?.period,
+        referenceDate: nowDate,
+      }),
+    [
+      currentUser.memberSince,
+      currentUser.membershipTermStart,
+      currentUser.renewalDate,
+      currentUser.membershipCycle,
+      activeTier?.period,
+      nowDate,
+    ]
+  );
+
+  const [draftCycle, setDraftCycle] = useState<MembershipCyclePeriod>(
+    membershipTimeline.cycle
+  );
+  const [draftStartIso, setDraftStartIso] = useState<string>(
+    membershipTimeline.termStartIso
+  );
+  const [draftRenewalIso, setDraftRenewalIso] = useState<string>(
+    membershipTimeline.renewalDateIso
+  );
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNowDate(new Date()), 60000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    setDraftCycle(membershipTimeline.cycle);
+    setDraftStartIso(membershipTimeline.termStartIso);
+    setDraftRenewalIso(membershipTimeline.renewalDateIso);
+  }, [
+    membershipTimeline.cycle,
+    membershipTimeline.termStartIso,
+    membershipTimeline.renewalDateIso,
+  ]);
+
+  const handleCycleSelect = (nextCycle: MembershipCyclePeriod) => {
+    setDraftCycle(nextCycle);
+    const startObj = parseFlexibleDate(draftStartIso);
+    const recomputed = calculateRenewalDateFromCycle(startObj, nextCycle);
+    setDraftRenewalIso(toIsoDateString(recomputed));
+  };
+
+  const handleStartDateChange = (nextStartIso: string) => {
+    setDraftStartIso(nextStartIso);
+    const startObj = parseFlexibleDate(nextStartIso);
+    const recomputed = calculateRenewalDateFromCycle(startObj, draftCycle);
+    setDraftRenewalIso(toIsoDateString(recomputed));
+  };
+
+  const handleSaveMembershipDates = (e: React.FormEvent) => {
+    e.preventDefault();
+    updateUserMembershipDate({
+      termStartIso: draftStartIso,
+      renewalDateIso: draftRenewalIso,
+      cycle: draftCycle,
+    });
+    setIsDateEditorOpen(false);
+  };
 
   // Determine the effective dynamic state
-  // 1. Pending: if pendingUpgrade exists and status is 'PENDING_VERIFICATION'
-  // 2. Declined: if pendingUpgrade exists and status is 'REJECTED'
-  // 3. Approved: if pendingUpgrade is null or status is 'APPROVED'
-  const isPending = pending && pending.status === 'PENDING_VERIFICATION';
-  const isDeclined = pending && pending.status === 'REJECTED';
-  const isApproved = !isPending && !isDeclined;
+  const isPending = pending?.status === 'PENDING_VERIFICATION';
+  const isDeclined = pending?.status === 'REJECTED';
+  const isUnassigned = !activeTier && !isPending && !isDeclined;
+  const isApproved = Boolean(activeTier) && !isPending && !isDeclined;
 
   const handleResubmitSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -97,71 +178,118 @@ export const UserDashboardStatusCard: React.FC = () => {
               <span className="text-slate-600">·</span>
               <span className="text-[11px] font-mono text-emerald-400">Verified Underwriting Channel</span>
             </div>
-            <h2 className="text-xl sm:text-2xl font-bold text-white mt-1 flex items-center gap-2.5">
-              <span>{activeTier.name}</span>
-              <span className="text-xs px-2.5 py-0.5 rounded-full font-sans font-medium bg-slate-800 text-slate-300 border border-slate-700">
-                Current Plan
+            <h2 className="text-xl sm:text-2xl font-bold text-white mt-1 flex flex-wrap items-center gap-2.5">
+              <span>
+                {activeTier
+                  ? activeTier.name
+                  : isPending
+                  ? pending?.requestedTierName || 'Package Pending Review'
+                  : 'No Membership Tier Assigned'}
+              </span>
+              <span
+                className={`text-xs px-2.5 py-0.5 rounded-full font-sans font-medium border ${
+                  isApproved
+                    ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                    : isPending
+                    ? 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                    : isDeclined
+                    ? 'bg-rose-500/15 text-rose-300 border-rose-500/30'
+                    : 'bg-slate-800 text-slate-300 border-slate-700'
+                }`}
+              >
+                {isApproved
+                  ? 'Active Approved Plan'
+                  : isPending
+                  ? 'Pending Customer Care Approval'
+                  : isDeclined
+                  ? 'Action Required'
+                  : 'Not Assigned Yet'}
               </span>
             </h2>
           </div>
 
-          {/* Quick Actions / Upgrade Trigger & Restore Good Standing */}
+          {/* Quick Actions: Choose or Upgrade Tier */}
           <div className="flex flex-wrap items-center gap-2">
-            {pending && (
-              <button
-                type="button"
-                onClick={() => restoreActiveGoodStanding(pending.requestedTierId || activeTier.id)}
-                className="min-h-[40px] inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-emerald-500/15 hover:bg-emerald-500/25 active:scale-95 text-emerald-300 border border-emerald-500/30 transition-all shadow-sm cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
-                title="Restore membership standing to Active Verified state"
-              >
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                <span>Restore Active Standing</span>
-              </button>
-            )}
             <button
               type="button"
               onClick={() => setIsTierUpgradeSelectorOpen(!isTierUpgradeSelectorOpen)}
               className="min-h-[40px] inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-200 border border-slate-700 transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400"
             >
               <Zap className="w-3.5 h-3.5 text-amber-400" />
-              <span>{isTierUpgradeSelectorOpen ? 'Close Upgrade Menu' : 'Upgrade Membership Tier'}</span>
+              <span>
+                {isTierUpgradeSelectorOpen
+                  ? 'Close Tier Menu'
+                  : activeTier
+                  ? 'Upgrade Membership Tier'
+                  : 'Choose Membership Tier'}
+              </span>
             </button>
           </div>
         </div>
 
-        {/* Tier Upgrade Selector Dropdown if open */}
+        {/* Tier Selector Dropdown if open */}
         {isTierUpgradeSelectorOpen && (
           <div className="my-4 p-4 bg-slate-950 border border-slate-800 rounded-xl space-y-3 animate-in fade-in duration-200">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
               <span className="text-xs font-semibold text-white">
-                Select a Tier to Submit a New Payment Request:
+                {activeTier
+                  ? 'Select a Tier Package to Request Upgrade:'
+                  : 'Choose Your Membership Tier Package:'}
               </span>
-              <span className="text-[11px] text-slate-400">
-                Updates status to Pending & opens Screen 1
+              <span className="text-[11px] text-amber-400">
+                All packages are manually reviewed & approved by Customer Care Support in the Admin Panel
               </span>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {tiers.map((t) => (
-                <button
-                  key={t.id}
-                  type="button"
-                  onClick={() => handleSimulateNewRequest(t.id)}
-                  disabled={t.id === currentUser.membershipTierId && !pending}
-                  className={`p-3 text-left rounded-xl border text-xs transition-all active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 ${
-                    t.id === currentUser.membershipTierId
-                      ? 'border-slate-800 bg-slate-900/50 text-slate-400 cursor-not-allowed'
-                      : 'border-slate-700 hover:border-emerald-500/60 bg-slate-900 hover:bg-slate-850 text-white cursor-pointer shadow-sm'
-                  }`}
-                >
-                  <div className="font-semibold text-white">{t.name}</div>
-                  <div className="text-[11px] text-emerald-400 font-mono mt-0.5">
-                    ${t.price.toLocaleString()} / {t.period}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              {tiers.map((t) => {
+                const isCurrentActive = t.id === currentUser.membershipTierId && !pending;
+                return (
+                  <div
+                    key={t.id}
+                    className={`p-3 rounded-xl border text-xs flex flex-col justify-between gap-2.5 ${
+                      isCurrentActive
+                        ? 'border-emerald-500/40 bg-emerald-950/20 text-slate-300'
+                        : 'border-slate-700 bg-slate-900 text-white'
+                    }`}
+                  >
+                    <div>
+                      <div className="font-semibold text-white">{t.name}</div>
+                      <div className="text-[11px] text-emerald-400 font-mono mt-0.5">
+                        ${t.price.toLocaleString()} / {t.period}
+                      </div>
+                      <div className="text-[10px] text-slate-400 mt-1">
+                        Up to ${t.maxLoanLimit.toLocaleString()} debt capacity
+                      </div>
+                    </div>
+
+                    {isCurrentActive ? (
+                      <span className="text-[10px] font-semibold text-emerald-400 uppercase tracking-wider">
+                        Current Active Plan
+                      </span>
+                    ) : (
+                      <div className="space-y-1.5 pt-1 border-t border-slate-800/80">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            requestMembershipTierSelection(t.id);
+                            setIsTierUpgradeSelectorOpen(false);
+                          }}
+                          className="w-full py-1.5 px-2.5 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 font-semibold text-[11px] transition cursor-pointer"
+                        >
+                          Submit Choice (Care Review)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleSimulateNewRequest(t.id)}
+                          className="w-full py-1.5 px-2.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-semibold text-[11px] transition cursor-pointer"
+                        >
+                          Pay &amp; Submit Proof
+                        </button>
+                      </div>
+                    )}
                   </div>
-                  <div className="text-[10px] text-slate-400 mt-1">
-                    Up to ${t.maxLoanLimit.toLocaleString()} debt capacity
-                  </div>
-                </button>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
@@ -217,15 +345,6 @@ export const UserDashboardStatusCard: React.FC = () => {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2 shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => restoreActiveGoodStanding(pending?.requestedTierId || activeTier.id)}
-                    className="min-h-[40px] inline-flex items-center gap-1 px-3.5 py-2 rounded-xl text-xs font-semibold bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-slate-950 transition-all shadow-sm cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
-                    title="Instantly clear pending verification and restore active membership"
-                  >
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span>Activate Standing Now</span>
-                  </button>
                   <a
                     href={mailtoHref}
                     target="_blank"
@@ -318,8 +437,41 @@ export const UserDashboardStatusCard: React.FC = () => {
             </div>
           )}
 
+          {/* ⚪ 0. UNASSIGNED MEMBERSHIP TIER BANNER */}
+          {isUnassigned && (
+            <div className="bg-gradient-to-r from-sky-500/10 via-slate-900 to-slate-900 border-2 border-sky-500/40 rounded-xl p-5 sm:p-6 shadow-lg space-y-4 animate-in fade-in duration-300">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="flex items-start gap-3.5">
+                  <div className="w-11 h-11 rounded-xl bg-sky-500/15 border border-sky-500/40 flex items-center justify-center text-sky-400 shrink-0">
+                    <Sparkles className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-mono uppercase tracking-wider font-bold bg-sky-500/15 text-sky-300 border border-sky-500/30 mb-1.5">
+                      Step Required · Choose Membership Tier Package
+                    </div>
+                    <h3 className="text-base sm:text-lg font-bold text-white tracking-tight">
+                      No Membership Tier Package Selected Yet
+                    </h3>
+                    <p className="text-xs sm:text-sm text-slate-300 mt-1 leading-relaxed max-w-2xl">
+                      Our platform does not assign membership packages automatically upon registration. Please choose your preferred membership tier package below (submit your choice for review or complete retainer checkout). Once submitted, Customer Care Support will manually review and approve your tier from the Admin Panel.
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setIsTierUpgradeSelectorOpen(true)}
+                  className="min-h-[42px] px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs inline-flex items-center gap-1.5 shrink-0 cursor-pointer transition shadow-md shadow-emerald-500/20"
+                >
+                  <span>Choose Tier Package</span>
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* 🟢 3. APPROVED STATUS CELEBRATION BANNER */}
-          {isApproved && (
+          {isApproved && activeTier && (
             <div className="bg-gradient-to-r from-emerald-500/15 via-slate-900 to-slate-900 border-2 border-emerald-500/50 rounded-xl p-5 sm:p-6 shadow-xl space-y-4 animate-in fade-in duration-300">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div className="flex items-start gap-3.5">
@@ -336,20 +488,26 @@ export const UserDashboardStatusCard: React.FC = () => {
                       <Sparkles className="w-4 h-4 text-emerald-400" />
                     </h3>
                     <p className="text-xs sm:text-sm text-slate-300 mt-1">
-                      Your payment has been cleared by Customer Care & Underwriting. All tier borrowing privileges, expedited SLAs, and syndicate facilities are fully unlocked.
+                      Your package has been manually reviewed and cleared by Customer Care Support &amp; Underwriting. All tier borrowing privileges, expedited SLAs, and syndicate facilities are fully unlocked.
                     </p>
                   </div>
                 </div>
 
                 <div className="sm:text-right shrink-0 bg-slate-950/60 p-3 rounded-lg border border-slate-800">
                   <span className="text-[11px] font-mono uppercase text-slate-400 block mb-0.5">
-                    Annual Renewal Date
+                    {membershipTimeline.cycle === 'quarter'
+                      ? 'Quarterly Renewal Date'
+                      : membershipTimeline.cycle === 'month'
+                      ? 'Monthly Renewal Date'
+                      : 'Annual Renewal Date'}
                   </span>
-                  <span className="text-white font-semibold text-xs sm:text-sm">
-                    {currentUser.renewalDate || 'January 15, 2027'}
+                  <span className="text-white font-semibold text-xs sm:text-sm tabular-nums">
+                    {membershipTimeline.renewalDateFormatted}
                   </span>
-                  <span className="text-[10px] text-emerald-400 block mt-0.5">
-                    ● Institutional Standing in Good Order
+                  <span className="text-[10px] text-emerald-400 block mt-0.5 tabular-nums">
+                    {membershipTimeline.remainingDays >= 0
+                      ? `${membershipTimeline.remainingDays} days remaining`
+                      : `Renewal overdue by ${Math.abs(membershipTimeline.remainingDays)} days`}
                   </span>
                 </div>
               </div>
@@ -399,6 +557,194 @@ export const UserDashboardStatusCard: React.FC = () => {
                 </div>
               </div>
             </div>
+          )}
+        </div>
+
+        {/* Interactive Updated Membership Date & Live Cycle Tracker */}
+        <div className="mt-5 pt-5 border-t border-slate-800/80 space-y-4">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-950/75 border border-slate-800 rounded-xl p-4">
+            <div className="space-y-1.5 flex-1">
+              <div className="flex flex-wrap items-center gap-2 text-xs">
+                <Calendar className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span className="font-semibold text-white">
+                  Membership Date &amp; Renewal Schedule
+                </span>
+                <span className="text-slate-600" aria-hidden="true">·</span>
+                <span className="text-slate-400">
+                  Today: <strong className="text-slate-200">{formatLongDate(nowDate)}</strong>
+                </span>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-400 tabular-nums">
+                <span>
+                  Cycle Start:{' '}
+                  <strong className="text-slate-200">{membershipTimeline.termStartFormatted}</strong>
+                </span>
+                <span aria-hidden="true">·</span>
+                <span>
+                  Next Renewal:{' '}
+                  <strong className="text-emerald-400">{membershipTimeline.renewalDateFormatted}</strong>
+                </span>
+                <span aria-hidden="true">·</span>
+                <span>
+                  {membershipTimeline.remainingDays >= 0
+                    ? `${membershipTimeline.remainingDays} of ${membershipTimeline.totalCycleDays} days left`
+                    : `${Math.abs(membershipTimeline.remainingDays)} days past renewal`}
+                </span>
+              </div>
+
+              {/* Cycle Progress Bar */}
+              <div className="pt-1.5 max-w-xl">
+                <div className="w-full h-1.5 bg-slate-900 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all duration-300 ${
+                      membershipTimeline.isExpired
+                        ? 'bg-rose-500'
+                        : membershipTimeline.isRenewalDueSoon
+                        ? 'bg-amber-400'
+                        : 'bg-emerald-500'
+                    }`}
+                    style={{ width: `${membershipTimeline.progressPercent}%` }}
+                  />
+                </div>
+                {currentUser.membershipDateUpdatedAt && (
+                  <p className="text-[11px] text-slate-400 mt-1.5">
+                    Updated {new Date(currentUser.membershipDateUpdatedAt).toLocaleString()}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => setIsDateEditorOpen((prev) => !prev)}
+                className="min-h-[40px] px-3.5 py-2 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-white border border-slate-700 inline-flex items-center gap-1.5 transition cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+              >
+                <RefreshCw className="w-3.5 h-3.5 text-emerald-400" />
+                <span>{isDateEditorOpen ? 'Close Date Controls' : 'Update Membership Date'}</span>
+              </button>
+            </div>
+          </div>
+
+          {isDateEditorOpen && (
+            <form
+              onSubmit={handleSaveMembershipDates}
+              className="bg-slate-950 border border-emerald-500/30 rounded-xl p-4 space-y-4 animate-in fade-in duration-200"
+            >
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <h4 className="text-xs font-semibold text-white">
+                    Adjust Membership Cycle &amp; Renewal Date
+                  </h4>
+                  <p className="text-[11px] text-slate-400">
+                    Choose a billing cadence or pick custom start and renewal dates to update your live dashboard timeline.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleStartDateChange(toIsoDateString(new Date()))}
+                  className="text-xs text-emerald-400 hover:text-emerald-300 font-medium cursor-pointer self-start sm:self-auto"
+                >
+                  Sync Start to Today
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <span className="block text-[11px] font-medium text-slate-300 mb-1.5">
+                    Membership Billing Cycle
+                  </span>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {(
+                      [
+                        { id: 'month', label: 'Monthly' },
+                        { id: 'quarter', label: 'Quarterly' },
+                        { id: 'year', label: 'Annual' },
+                      ] as Array<{ id: MembershipCyclePeriod; label: string }>
+                    ).map((opt) => (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => handleCycleSelect(opt.id)}
+                        className={`min-h-[38px] px-2 py-1.5 rounded-lg text-xs font-medium border transition cursor-pointer ${
+                          draftCycle === opt.id
+                            ? 'bg-emerald-500/20 border-emerald-500 text-emerald-300'
+                            : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="membership-term-start"
+                    className="block text-[11px] font-medium text-slate-300 mb-1.5"
+                  >
+                    Cycle Start Date
+                  </label>
+                  <input
+                    id="membership-term-start"
+                    type="date"
+                    value={draftStartIso}
+                    onChange={(e) => {
+                      if (e.target.value) handleStartDateChange(e.target.value);
+                    }}
+                    className="w-full min-h-[38px] bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="membership-renewal-date"
+                    className="block text-[11px] font-medium text-slate-300 mb-1.5"
+                  >
+                    Updated Renewal Date
+                  </label>
+                  <input
+                    id="membership-renewal-date"
+                    type="date"
+                    value={draftRenewalIso}
+                    onChange={(e) => {
+                      if (e.target.value) setDraftRenewalIso(e.target.value);
+                    }}
+                    className="w-full min-h-[38px] bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-800/80 text-xs">
+                <span className="text-slate-400">
+                  Preview:{' '}
+                  <strong className="text-white">
+                    {formatLongDate(parseFlexibleDate(draftStartIso))}
+                  </strong>{' '}
+                  to{' '}
+                  <strong className="text-emerald-400">
+                    {formatLongDate(parseFlexibleDate(draftRenewalIso))}
+                  </strong>
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsDateEditorOpen(false)}
+                    className="min-h-[38px] px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="min-h-[38px] px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-semibold text-xs inline-flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                    <span>Save Updated Date</span>
+                  </button>
+                </div>
+              </div>
+            </form>
           )}
         </div>
 

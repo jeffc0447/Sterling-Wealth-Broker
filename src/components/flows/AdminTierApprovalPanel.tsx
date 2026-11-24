@@ -80,7 +80,9 @@ export const AdminTierApprovalPanel: React.FC = () => {
 
       // Tier filter
       const effectiveTierId = sub.requestedTierId || sub.membershipTierId;
-      if (selectedTierFilter !== 'ALL' && effectiveTierId !== selectedTierFilter) {
+      if (selectedTierFilter === 'UNASSIGNED') {
+        if (effectiveTierId !== null) return false;
+      } else if (selectedTierFilter !== 'ALL' && effectiveTierId !== selectedTierFilter) {
         return false;
       }
 
@@ -247,7 +249,7 @@ export const AdminTierApprovalPanel: React.FC = () => {
               Membership Tier Approval & Verification Queue
             </h1>
             <p className="text-xs sm:text-sm text-slate-300 mt-1 max-w-2xl leading-relaxed">
-              Review incoming client retainer receipts, verify wire/card transaction clearances, and manually upgrade membership tier packages.
+              Customer Care Support manually reviews and approves all user-selected membership tier packages (chosen during registration or after sign-up), verifies payment proofs, and activates tier privileges.
             </p>
           </div>
 
@@ -372,6 +374,7 @@ export const AdminTierApprovalPanel: React.FC = () => {
               className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
             >
               <option value="ALL">All Tiers</option>
+              <option value="UNASSIGNED">No Tier Selected</option>
               {tiers.map((t) => (
                 <option key={t.id} value={t.id}>
                   {t.name}
@@ -470,10 +473,14 @@ export const AdminTierApprovalPanel: React.FC = () => {
 
                       {/* Selected Tier */}
                       <td className="py-4 px-4">
-                        <div className="font-medium text-white">{displayTierName}</div>
+                        <div className="font-medium text-white">
+                          {displayTierName || 'No Active Tier'}
+                        </div>
                         {subscriber.requestedTierName && (
                           <div className="text-[11px] text-amber-400 mt-0.5 flex items-center gap-1">
-                            <span className="text-slate-500">{subscriber.membershipTierName}</span>
+                            <span className="text-slate-500">
+                              {subscriber.membershipTierName || 'No Active Tier'}
+                            </span>
                             <span>→</span>
                             <span className="font-semibold">{subscriber.requestedTierName}</span>
                           </div>

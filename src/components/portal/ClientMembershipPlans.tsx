@@ -21,6 +21,7 @@ export const ClientMembershipPlans: React.FC = () => {
     tiers,
     currentUser,
     setSelectedCheckoutTier,
+    requestMembershipTierSelection,
     openLoanWizardWithInstrument,
     instruments,
   } = useBroker();
@@ -46,7 +47,7 @@ export const ClientMembershipPlans: React.FC = () => {
   const privateWealthInstrument = instruments.find((i) => i.id === 'inst-private-wealth-liquidity');
 
   return (
-    <div className="space-y-8 mt-6">
+    <div id="client-membership-plans" className="space-y-8 mt-6">
       {/* Section Header */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 sm:p-7 relative overflow-hidden">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -59,14 +60,15 @@ export const ClientMembershipPlans: React.FC = () => {
               Membership Packages & Syndicate Facilities
             </h2>
             <p className="text-xs sm:text-sm text-slate-400 mt-1 max-w-2xl leading-relaxed">
-              Explore your active privileges or upgrade your membership tier. All 3 payment gateways (Credit Card with real-time AVS, Cryptocurrency with QR, and Bank Wire Transfer with Care Agent Audit) apply across every package tier.
+              Choose your preferred membership package or upgrade an existing tier. All membership tier selections are manually reviewed and approved by Customer Care Support in the Admin Panel before activation.
             </p>
           </div>
 
           <div className="text-left md:text-right shrink-0 bg-slate-950/80 p-3.5 rounded-xl border border-slate-800">
             <span className="text-[11px] text-slate-400 block font-medium">Your Active Tier</span>
             <span className="text-sm font-bold text-amber-400 font-display">
-              {tiers.find((t) => t.id === currentUser.membershipTierId)?.name || 'Silver Access'}
+              {tiers.find((t) => t.id === currentUser.membershipTierId)?.name ||
+                'No Active Tier Assigned'}
             </span>
             <span className="text-[10px] text-emerald-400 block mt-0.5 font-mono">
               Status: {currentUser.membershipStatus}
@@ -160,15 +162,29 @@ export const ClientMembershipPlans: React.FC = () => {
                 <span className="px-4 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-semibold">
                   Active Package
                 </span>
+              ) : currentUser.pendingUpgrade?.requestedTierId === silverTier.id &&
+                currentUser.pendingUpgrade.status === 'PENDING_VERIFICATION' ? (
+                <span className="px-4 py-2 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-300 text-xs font-semibold">
+                  Pending Customer Care Approval
+                </span>
               ) : (
-                <button
-                  type="button"
-                  onClick={() => handleSelectTier(silverTier)}
-                  className="w-full sm:w-auto px-5 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded-xl text-xs flex items-center justify-center gap-2 transition cursor-pointer"
-                >
-                  <span>Select / Upgrade Personal Loan (Silver Package)</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </button>
+                <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-end">
+                  <button
+                    type="button"
+                    onClick={() => requestMembershipTierSelection(silverTier.id)}
+                    className="w-full sm:w-auto px-4 py-2.5 bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 font-semibold rounded-xl text-xs transition cursor-pointer"
+                  >
+                    Submit Choice (Care Review)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSelectTier(silverTier)}
+                    className="w-full sm:w-auto px-5 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded-xl text-xs flex items-center justify-center gap-2 transition cursor-pointer"
+                  >
+                    <span>Pay &amp; Select Personal Loan (Silver)</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               )}
             </div>
           </div>
@@ -309,19 +325,33 @@ export const ClientMembershipPlans: React.FC = () => {
                     <div className="w-full py-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-semibold text-center">
                       Currently Active Business Package
                     </div>
+                  ) : currentUser.pendingUpgrade?.requestedTierId === tier.id &&
+                    currentUser.pendingUpgrade.status === 'PENDING_VERIFICATION' ? (
+                    <div className="w-full py-2.5 rounded-xl bg-amber-500/15 border border-amber-500/30 text-amber-300 text-xs font-semibold text-center">
+                      Pending Customer Care Approval
+                    </div>
                   ) : (
-                    <button
-                      type="button"
-                      onClick={() => handleSelectTier(tier)}
-                      className={`w-full py-2.5 px-4 font-bold rounded-xl text-xs flex items-center justify-center gap-2 transition cursor-pointer ${
-                        isPopular
-                          ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-md shadow-amber-500/20'
-                          : 'bg-slate-800 hover:bg-slate-700 text-white border border-slate-700'
-                      }`}
-                    >
-                      <span>Select / Upgrade {tier.name}</span>
-                      <ArrowRight className="w-3.5 h-3.5" />
-                    </button>
+                    <div className="space-y-2">
+                      <button
+                        type="button"
+                        onClick={() => handleSelectTier(tier)}
+                        className={`w-full py-2.5 px-4 font-bold rounded-xl text-xs flex items-center justify-center gap-2 transition cursor-pointer ${
+                          isPopular
+                            ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-md shadow-amber-500/20'
+                            : 'bg-slate-800 hover:bg-slate-700 text-white border border-slate-700'
+                        }`}
+                      >
+                        <span>Pay &amp; Select {tier.name}</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => requestMembershipTierSelection(tier.id)}
+                        className="w-full py-2 px-4 font-semibold rounded-xl text-[11px] bg-slate-950 hover:bg-slate-800 text-amber-300 border border-amber-500/30 transition cursor-pointer"
+                      >
+                        Request Package (Customer Care Review)
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>

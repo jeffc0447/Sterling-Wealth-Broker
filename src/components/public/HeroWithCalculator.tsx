@@ -1,7 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { useBroker } from '../../context/BrokerContext';
 import { MembershipTierId } from '../../types';
-import { Calculator, ArrowRight, ShieldCheck, Sparkles, TrendingUp, Clock } from 'lucide-react';
+import { calculateTierLoanSchedule } from '../../utils/loanDateEngine';
+import { Calculator, ArrowRight, ShieldCheck, Sparkles, TrendingUp, Clock, Calendar } from 'lucide-react';
 import heroSkylineBg from '../../assets/images/hero_financial_skyline_1793960018583.jpg';
 
 interface HeroWithCalculatorProps {
@@ -29,26 +30,27 @@ export const HeroWithCalculator: React.FC<HeroWithCalculatorProps> = ({ onSelect
     }
   }, [loanAmount, tiers]);
 
-  // Loan repayment calculation with tier discount
+  // Loan repayment & tier-based date calculation via shared engine
   const calculation = useMemo(() => {
-    // Base APR ~7.5% minus tier discount
-    const baseApr = 7.75;
-    const effectiveApr = Math.max(4.25, baseApr - (recommendedTier.aprDiscount || 0));
-    const monthlyRate = effectiveApr / 100 / 12;
-    const monthlyPayment =
-      (loanAmount * (monthlyRate * Math.pow(1 + monthlyRate, termMonths))) /
-      (Math.pow(1 + monthlyRate, termMonths) - 1);
-
-    const totalRepayment = monthlyPayment * termMonths;
-    const totalInterest = totalRepayment - loanAmount;
+    const schedule = calculateTierLoanSchedule({
+      tier: recommendedTier,
+      loanAmount,
+      termMonths,
+      applicationDate: new Date(),
+      baselineTier: tiers.find((t) => t.id === 'silver') || tiers[0],
+    });
 
     return {
-      effectiveApr: effectiveApr.toFixed(2),
-      monthlyPayment: Math.round(monthlyPayment),
-      totalRepayment: Math.round(totalRepayment),
-      totalInterest: Math.round(totalInterest),
+      effectiveApr: schedule.effectiveApr.toFixed(2),
+      monthlyPayment: schedule.monthlyPayment,
+      totalRepayment: schedule.totalRepayment,
+      totalInterest: schedule.totalInterest,
+      approvalDate: schedule.underwritingApprovalDateFormatted,
+      disbursementDate: schedule.disbursementDateFormatted,
+      maturityDate: schedule.maturityDateFormatted,
+      turnaroundBusinessDays: schedule.turnaroundBusinessDays,
     };
-  }, [loanAmount, termMonths, recommendedTier]);
+  }, [loanAmount, termMonths, recommendedTier, tiers]);
 
   const quickPresets = [
     { label: '$25k', value: 25000 },
@@ -260,6 +262,24 @@ export const HeroWithCalculator: React.FC<HeroWithCalculatorProps> = ({ onSelect
                     <span className="text-[10px] text-emerald-400 block mt-0.5">
                       Incl. -{recommendedTier.aprDiscount}% Tier Discount
                     </span>
+                  </div>
+                </div>
+
+                {/* Tier-Based Loan Date Schedule Strip */}
+                <div className="bg-slate-950/90 border border-slate-800/90 rounded-xl p-3 flex flex-wrap items-center justify-between gap-2 text-[11px] tabular-nums">
+                  <div className="flex items-center gap-1.5 text-slate-300">
+                    <Calendar className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    <span>Approval: <strong className="text-white">{calculation.approvalDate}</strong></span>
+                  </div>
+                  <span className="text-slate-600 hidden sm:inline" aria-hidden="true">·</span>
+                  <div>
+                    <span className="text-slate-400">Est. Funding: </span>
+                    <strong className="text-emerald-400">{calculation.disbursementDate}</strong>
+                  </div>
+                  <span className="text-slate-600 hidden sm:inline" aria-hidden="true">·</span>
+                  <div>
+                    <span className="text-slate-400">Maturity: </span>
+                    <strong className="text-white">{calculation.maturityDate}</strong>
                   </div>
                 </div>
 

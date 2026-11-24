@@ -124,46 +124,86 @@ $headers = [
     'X-Mailer: PHP/' . PHP_VERSION,
 ];
 
-$mailSent = @mail($recipientEmail, $subject, $htmlBody, implode("\r\n", $headers), "-f{$fromEmail}");
-if (!$mailSent) {
-    // Retry without -f flag on restrictive shared hosts
-    $mailSent = @mail($recipientEmail, $subject, $htmlBody, implode("\r\n", $headers));
-}
-
 // Persist inquiry to MySQL (best-effort if DB is configured)
+$pdo = null;
 $dbSaved = false;
 try {
     require_once __DIR__ . '/../config/db.php';
     $pdo = Database::getConnection();
-    $stmt = $pdo->prepare('
-        INSERT INTO contact_inquiries (
-            id, inquiry_number, full_name, email, phone, company,
-            capital_needed, product_type, message, recipient_email,
-            mail_dispatched, status, ip_address
-        ) VALUES (
-            :id, :num, :name, :email, :phone, :company,
-            :capital, :product, :message, :recipient,
-            :dispatched, "NEW", :ip
-        )
-    ');
-    $stmt->execute([
-        ':id'         => $inquiryId,
-        ':num'        => $inquiryNumber,
-        ':name'       => $safeName,
-        ':email'      => $safeEmail,
-        ':phone'      => $phone,
-        ':company'    => $company,
-        ':capital'    => $capitalNeeded,
-        ':product'    => $productType,
-        ':message'    => $message,
-        ':recipient'  => $recipientEmail,
-        ':dispatched' => $mailSent ? 1 : 0,
-        ':ip'         => $ipAddress,
-    ]);
-    $dbSaved = true;
 } catch (Throwable $e) {
-    // Do not block inquiry response if DB schema hasn't added table yet
-    $dbSaved = false;
+    $pdo = null;
+}
+
+require_once __DIR__ . '/../config/mailer.php';
+$mailConfig = EmailNotifier::getConfig($pdo);
+
+// Send inquiry to support-broker@consultant.com using SMTP / PHP mail()
+$dispatchResult = EmailNotifier::sendRaw($recipientEmail, $fromName, $subject, $htmlBody, array_merge($mailConfig, [
+    'replyToEmail' => $safeEmail,
+]));
+$mailSent = (bool)($dispatchResult['sent'] ?? false);
+
+EmailNotifier::logToDatabase(
+    $pdo,
+    'mail-' . bin2hex(random_bytes(5)),
+    'CONTACT_INQUIRY_DESK',
+    $recipientEmail,
+    $fromName,
+    $subject,
+    $htmlBody,
+    strip_tags($message ?: 'New underwriting inquiry'),
+    $mailSent ? 'SENT' : 'FAILED',
+    (string)($dispatchResult['transport'] ?? 'php_mail'),
+    $dispatchResult['error'] ?? null,
+    $inquiryNumber,
+    date('Y-m-d H:i:s')
+);
+
+// Automated confirmation email back to the sender
+EmailNotifier::dispatchEvent(
+    $pdo,
+    'CONTACT_INQUIRY',
+    $safeEmail,
+    $safeName,
+    [
+        'inquiryNumber' => $inquiryNumber,
+        'productType'   => $productType,
+        'capitalNeeded' => $capitalNeeded,
+    ],
+    $inquiryNumber
+);
+
+if ($pdo !== null) {
+    try {
+        $stmt = $pdo->prepare('
+            INSERT INTO contact_inquiries (
+                id, inquiry_number, full_name, email, phone, company,
+                capital_needed, product_type, message, recipient_email,
+                mail_dispatched, status, ip_address
+            ) VALUES (
+                :id, :num, :name, :email, :phone, :company,
+                :capital, :product, :message, :recipient,
+                :dispatched, "NEW", :ip
+            )
+        ');
+        $stmt->execute([
+            ':id'         => $inquiryId,
+            ':num'        => $inquiryNumber,
+            ':name'       => $safeName,
+            ':email'      => $safeEmail,
+            ':phone'      => $phone,
+            ':company'    => $company,
+            ':capital'    => $capitalNeeded,
+            ':product'    => $productType,
+            ':message'    => $message,
+            ':recipient'  => $recipientEmail,
+            ':dispatched' => $mailSent ? 1 : 0,
+            ':ip'         => $ipAddress,
+        ]);
+        $dbSaved = true;
+    } catch (Throwable $e) {
+        $dbSaved = false;
+    }
 }
 
 sendJson([

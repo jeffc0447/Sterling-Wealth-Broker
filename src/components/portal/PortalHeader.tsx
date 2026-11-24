@@ -1,10 +1,27 @@
 import React from 'react';
 import { useBroker, PortalTab } from '../../context/BrokerContext';
+import { calculateMembershipTimeline } from '../../utils/loanDateEngine';
 import { LayoutDashboard, PlusCircle, FolderLock, Receipt, MessageSquareLock, ShieldCheck, UserCheck, PhoneCall, LogOut, Globe } from 'lucide-react';
 
 export const PortalHeader: React.FC = () => {
   const { portalTab, setPortalTab, currentUser, tiers, clientLogout, setCurrentView } = useBroker();
-  const currentTier = tiers.find((t) => t.id === currentUser.membershipTierId);
+  const currentTier = currentUser.membershipTierId
+    ? tiers.find((t) => t.id === currentUser.membershipTierId) || null
+    : null;
+  const membershipTimeline = calculateMembershipTimeline({
+    memberSince: currentUser.memberSince,
+    termStart: currentUser.membershipTermStart || currentUser.memberSince,
+    renewalDate: currentUser.renewalDate,
+    cycle: currentUser.membershipCycle,
+    tierPeriod: currentTier?.period,
+  });
+  const initials = currentUser.name
+    .split(' ')
+    .filter(Boolean)
+    .map((n) => n[0])
+    .slice(0, 2)
+    .join('')
+    .toUpperCase() || 'MB';
 
   const tabs: Array<{ id: PortalTab; label: string; icon: React.ReactNode }> = [
     { id: 'OVERVIEW', label: 'Portfolio Overview', icon: <LayoutDashboard className="w-4 h-4" /> },
@@ -21,20 +38,20 @@ export const PortalHeader: React.FC = () => {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-center gap-3.5">
             <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-500/20 to-slate-800 border border-emerald-500/40 text-emerald-400 flex items-center justify-center font-bold text-base shadow-lg shadow-emerald-950/40">
-              AV
+              {initials}
             </div>
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="font-display text-xl font-bold text-white">
                   {currentUser.name}
                 </h1>
-                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-400">
+                <span className={`inline-flex items-center gap-1 text-[11px] font-semibold ${currentUser.kycStatus === 'VERIFIED' ? 'text-emerald-400' : 'text-amber-400'}`}>
                   <ShieldCheck className="w-3.5 h-3.5" />
-                  KYC Verified
+                  {currentUser.kycStatus === 'VERIFIED' ? 'KYC Verified' : 'KYC In Review'}
                 </span>
               </div>
               <p className="text-xs text-slate-400">
-                {currentUser.company} · Member since {currentUser.memberSince}
+                {currentUser.company} · Member since {membershipTimeline.memberSinceFormatted} · Renewal {membershipTimeline.renewalDateFormatted}
               </p>
             </div>
           </div>
@@ -57,13 +74,19 @@ export const PortalHeader: React.FC = () => {
 
             <div className="bg-slate-950 border border-amber-500/40 rounded-xl px-4 py-2 text-left sm:text-right min-w-[140px] flex-1 sm:flex-initial">
               <span className="text-[10px] text-amber-400 uppercase tracking-wider block font-semibold">
-                Active Membership Tier
+                {currentTier ? 'Active Membership Tier' : 'Membership Tier'}
               </span>
               <div className="text-base font-display font-bold text-white">
-                {currentTier?.name}
+                {currentTier
+                  ? currentTier.name
+                  : currentUser.pendingUpgrade?.status === 'PENDING_VERIFICATION'
+                  ? `${currentUser.pendingUpgrade.requestedTierName} (Pending Review)`
+                  : 'No Tier Assigned'}
               </div>
               <span className="text-[11px] text-emerald-400 font-mono">
-                Ceiling: ${currentTier?.maxLoanLimit.toLocaleString()}
+                {currentTier
+                  ? `Ceiling: $${currentTier.maxLoanLimit.toLocaleString()}`
+                  : 'Pending Customer Care Approval'}
               </span>
             </div>
 
