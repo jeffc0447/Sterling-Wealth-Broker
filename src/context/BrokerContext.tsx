@@ -728,10 +728,39 @@ export const BrokerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       if (siteBranding.siteName && siteBranding.siteName.trim()) {
         document.title = `${siteBranding.siteName.trim()} | Tiered Financial Access & Loan Brokerage`;
       }
+      const customLogo = siteBranding.logoUrl?.trim() || null;
+      const svgIcon = document.querySelector<HTMLLinkElement>(
+        'link[data-brand-svg="true"], link[rel="icon"][type="image/svg+xml"]'
+      );
+      const png32Icon = document.querySelector<HTMLLinkElement>('link[rel="icon"][sizes="32x32"]');
+      const appleIcon = document.querySelector<HTMLLinkElement>('link[rel="apple-touch-icon"]');
+      const shortcutIcon = document.querySelector<HTMLLinkElement>('link[rel="shortcut icon"]');
+
+      if (svgIcon) {
+        svgIcon.dataset.brandSvg = 'true';
+      }
+
+      if (customLogo) {
+        if (svgIcon) {
+          svgIcon.href = customLogo;
+          svgIcon.removeAttribute('type');
+        }
+        if (png32Icon) png32Icon.href = customLogo;
+        if (appleIcon) appleIcon.href = customLogo;
+        if (shortcutIcon) shortcutIcon.href = customLogo;
+      } else {
+        if (svgIcon) {
+          svgIcon.type = 'image/svg+xml';
+          svgIcon.href = '/favicon.svg';
+        }
+        if (png32Icon) png32Icon.href = '/favicon-32x32.png';
+        if (appleIcon) appleIcon.href = '/apple-touch-icon.png';
+        if (shortcutIcon) shortcutIcon.href = '/favicon.ico';
+      }
     } catch {
       // ignore
     }
-  }, [siteBranding.siteName]);
+  }, [siteBranding.siteName, siteBranding.logoUrl]);
 
   const updateSiteBranding = (branding: SiteBranding) => {
     const cleanBranding: SiteBranding = {
