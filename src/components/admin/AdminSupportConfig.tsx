@@ -47,7 +47,9 @@ export const AdminSupportConfig: React.FC = () => {
   // Local form state initialized from context
   const [formData, setFormData] = useState<SupportAndCryptoConfig>({
     ...supportConfig,
-    agentEmail: enforceSterlingDomain(supportConfig.agentEmail, 'jeff'),
+    agentName: (supportConfig.agentName || 'Jeffery Dean').trim(),
+    agentEmail: (supportConfig.agentEmail || 'jeffery@accountant.com').trim(),
+    agentSecondaryEmail: (supportConfig.agentSecondaryEmail || 'jeffery@sterlingwealthbroker.com').trim(),
     walletAddresses: { ...supportConfig.walletAddresses },
     bankWire: { ...supportConfig.bankWire },
     enabledGateways: {
@@ -143,11 +145,15 @@ export const AdminSupportConfig: React.FC = () => {
       hours: formData.directChannels?.hours?.trim() || 'Monday – Friday: 24h Global',
       underwritingDirectEmail: enforceSterlingDomain(formData.directChannels?.underwritingDirectEmail || '', 'underwriting'),
     };
-    const sanitizedAgentEmail = enforceSterlingDomain(formData.agentEmail, 'jeff');
+    const sanitizedAgentEmail = (formData.agentEmail || 'jeffery@accountant.com').trim();
+    const sanitizedAgentSecondaryEmail = (formData.agentSecondaryEmail || 'jeffery@sterlingwealthbroker.com').trim();
+    const sanitizedAgentName = (formData.agentName || 'Jeffery Dean').trim();
 
     const updatedConfig = {
       ...formData,
+      agentName: sanitizedAgentName,
       agentEmail: sanitizedAgentEmail,
+      agentSecondaryEmail: sanitizedAgentSecondaryEmail,
       regionalDesks: sanitizedDesks,
       directChannels: sanitizedDirectChannels,
     };
@@ -155,7 +161,7 @@ export const AdminSupportConfig: React.FC = () => {
     setFormData(updatedConfig);
     updateSupportConfig(updatedConfig);
     setSavedSuccess(true);
-    triggerToast('Configuration Saved', 'Regional Underwriting Desks, Direct Verified Channels, and payment gateways deployed with verified @sterlingwealthbroker.com emails.', 'success');
+    triggerToast('Configuration Saved', 'Assigned Customer Care Specialist, Regional Underwriting Desks, Direct Verified Channels, and payment gateways deployed.', 'success');
     setTimeout(() => setSavedSuccess(false), 3500);
   };
 
@@ -230,7 +236,7 @@ export const AdminSupportConfig: React.FC = () => {
               </div>
 
               <p className="text-xs text-slate-400 leading-relaxed">
-                This will delete any customized depository bank coordinates, crypto escrow addresses, or customer service agent data and restore the verified baseline (<strong className="text-white">Jeff Campbell / jeff@sterlingwealthbroker.com</strong>).
+                This will delete any customized depository bank coordinates, crypto escrow addresses, or customer service agent data and restore the verified baseline (<strong className="text-white">Jeffery Dean / jeffery@accountant.com &amp; jeffery@sterlingwealthbroker.com</strong>).
               </p>
 
               <div className="flex justify-end gap-2.5 pt-2">
@@ -594,7 +600,7 @@ export const AdminSupportConfig: React.FC = () => {
               <span className="text-[11px] font-mono text-emerald-400">Primary Contact</span>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-300 mb-1">
                   Agent Full Name <span className="text-emerald-400">*</span>
@@ -604,25 +610,42 @@ export const AdminSupportConfig: React.FC = () => {
                   required
                   value={formData.agentName}
                   onChange={(e) => setFormData({ ...formData, agentName: e.target.value })}
-                  placeholder="e.g. Daniel Kim or Eleanor Sterling"
+                  placeholder="e.g. Jeffery Dean"
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500"
                 />
               </div>
 
               <div>
                 <label className="block text-xs font-semibold text-slate-300 mb-1">
-                  Agent Professional Email <span className="text-emerald-400">*</span>
+                  Primary Specialist Email <span className="text-emerald-400">*</span>
                 </label>
                 <input
                   type="email"
                   required
                   value={formData.agentEmail}
                   onChange={(e) => setFormData({ ...formData, agentEmail: e.target.value })}
-                  placeholder="e.g. jeff@sterlingwealthbroker.com"
+                  placeholder="e.g. jeffery@accountant.com"
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500 font-mono"
                 />
                 <span className="text-[10px] text-emerald-400 font-mono mt-0.5 block">
-                  Enforced Domain: @sterlingwealthbroker.com
+                  Displayed across all payment gateways &amp; dashboard
+                </span>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  Secondary Specialist Email <span className="text-emerald-400">*</span>
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={formData.agentSecondaryEmail || ''}
+                  onChange={(e) => setFormData({ ...formData, agentSecondaryEmail: e.target.value })}
+                  placeholder="e.g. jeffery@sterlingwealthbroker.com"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500 font-mono"
+                />
+                <span className="text-[10px] text-emerald-400 font-mono mt-0.5 block">
+                  Co-displayed on all payment gateways &amp; dashboard
                 </span>
               </div>
             </div>
@@ -1608,13 +1631,14 @@ export const AdminSupportConfig: React.FC = () => {
                 {formData.postPaymentInstructions}
               </div>
 
-              <div className="grid grid-cols-2 gap-2 pt-1">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
                 <div className="py-2 px-3 bg-amber-500 text-slate-950 font-semibold rounded-lg text-center flex items-center justify-center gap-1.5 text-xs">
                   <Mail className="w-3.5 h-3.5" />
                   <span>Email {formData.agentName.split(' ')[0]}</span>
                 </div>
-                <div className="py-2 px-3 bg-slate-800 text-slate-200 rounded-lg text-center font-mono text-[11px] flex items-center justify-center">
-                  {formData.agentEmail}
+                <div className="py-2 px-3 bg-slate-800 text-slate-200 rounded-lg text-center font-mono text-[11px] flex flex-col items-center justify-center gap-0.5">
+                  <span>{formData.agentEmail}</span>
+                  <span>{formData.agentSecondaryEmail || 'jeffery@sterlingwealthbroker.com'}</span>
                 </div>
               </div>
 

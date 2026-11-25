@@ -27,8 +27,9 @@ export const EncryptedChat: React.FC<EncryptedChatProps> = ({ embedded = false }
   const [copiedEmail, setCopiedEmail] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const agentName = supportConfig?.agentName || 'Jeff Campbell';
-  const agentEmail = supportConfig?.agentEmail || 'jeff@sterlingwealthbroker.com';
+  const agentName = supportConfig?.agentName || 'Jeffery Dean';
+  const agentEmail = supportConfig?.agentEmail || 'jeffery@accountant.com';
+  const agentSecondaryEmail = supportConfig?.agentSecondaryEmail || 'jeffery@sterlingwealthbroker.com';
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -46,7 +47,7 @@ export const EncryptedChat: React.FC<EncryptedChatProps> = ({ embedded = false }
   };
 
   const handleCopyEmail = () => {
-    navigator.clipboard.writeText(agentEmail);
+    navigator.clipboard.writeText(`${agentEmail}, ${agentSecondaryEmail}`);
     setCopiedEmail(true);
     setTimeout(() => setCopiedEmail(false), 2500);
   };
@@ -175,8 +176,10 @@ export const EncryptedChat: React.FC<EncryptedChatProps> = ({ embedded = false }
                       <span className="text-slate-400">Name: </span>
                       <strong className="text-white">{agentName}</strong>
                     </div>
-                    <div className="font-mono text-emerald-400">
-                      {agentEmail}
+                    <div className="font-mono text-emerald-400 flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+                      <a href={`mailto:${agentEmail}`} className="hover:underline">{agentEmail}</a>
+                      <span className="text-slate-500 font-sans">and</span>
+                      <a href={`mailto:${agentSecondaryEmail}`} className="hover:underline">{agentSecondaryEmail}</a>
                     </div>
                   </div>
                 </div>
@@ -191,18 +194,18 @@ export const EncryptedChat: React.FC<EncryptedChatProps> = ({ embedded = false }
                     {copiedEmail ? (
                       <>
                         <Check className="w-3.5 h-3.5 text-emerald-400" />
-                        <span className="text-emerald-400">Copied Email</span>
+                        <span className="text-emerald-400">Copied Emails</span>
                       </>
                     ) : (
                       <>
                         <Copy className="w-3.5 h-3.5" />
-                        <span>Copy Email Address</span>
+                        <span>Copy Both Emails</span>
                       </>
                     )}
                   </button>
 
                   <a
-                    href={`mailto:${agentEmail}?subject=Sterling%20Wealth%20Broker%20-%20Loan%20Underwriting%20Assistance%20Request&body=Hello%20Jeff%2C%0A%0AI%20am%20following%20up%20on%20my%20membership%20loan%20underwriting%20process.`}
+                    href={`mailto:${agentEmail},${agentSecondaryEmail}?subject=Sterling%20Wealth%20Broker%20-%20Loan%20Underwriting%20Assistance%20Request&body=Hello%20${encodeURIComponent(agentName.split(' ')[0] || 'Jeffery')}%2C%0A%0AI%20am%20following%20up%20on%20my%20membership%20loan%20underwriting%20process.`}
                     className="px-3.5 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 rounded-xl text-xs font-bold flex items-center gap-1.5 transition shadow-md shadow-emerald-500/20"
                   >
                     <Mail className="w-3.5 h-3.5" />
@@ -246,7 +249,7 @@ export const EncryptedChat: React.FC<EncryptedChatProps> = ({ embedded = false }
             onChange={(e) => setInputText(e.target.value)}
             placeholder={
               chatQuestionCount >= 4
-                ? "Triage answered. Ask another question or reach out to Jeff Campbell directly..."
+                ? `Triage answered. Ask another question or reach out to ${agentName} directly...`
                 : "Ask any underwriting, loan facility, or membership question..."
             }
             className="flex-1 bg-slate-900 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-emerald-500"

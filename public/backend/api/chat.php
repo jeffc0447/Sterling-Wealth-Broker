@@ -103,7 +103,7 @@ switch ($action) {
 
         if ($questionCount >= 4) {
             // After 3-5 questions: Handoff to Customer Care Agent
-            $robotText = "Thank you for these inquiries. As you have reached our automated concierge threshold, our system has flagged your file for high-touch service. Please contact our dedicated Customer Care Agent directly for further bespoke inquiries:\n\n👤 Agent: Jeff Campbell (Senior Customer Care Specialist)\n📧 Email: jeff@sterlingwealthbroker.com\n📞 Phone: +1 (800) 842-9912\n\nHe has received your session transcript and is on standby.";
+            $robotText = "Thank you for these inquiries. As you have reached our automated concierge threshold, our system has flagged your file for high-touch service. Please contact our dedicated Customer Care Specialist directly for further bespoke inquiries:\n\n👤 Specialist: Jeffery Dean (Senior Customer Care Specialist)\n📧 Emails: jeffery@accountant.com and jeffery@sterlingwealthbroker.com\n📞 Phone: +1 (800) 842-9912\n\nHe has received your session transcript and is on standby.";
         } else {
             // Context-sensitive automated replies
             $lower = strtolower($userText);

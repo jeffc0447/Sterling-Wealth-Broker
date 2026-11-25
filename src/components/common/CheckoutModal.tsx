@@ -102,12 +102,14 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ tier, onClose }) =
     name: string;
     size: string;
     uploadedAt: string;
-  } | null>({
-    name: `Wire_Remittance_Receipt_${tier?.name.replace(/\s+/g, '_') || 'Package'}.pdf`,
-    size: '1.42 MB',
-    uploadedAt: 'Just now',
-  });
+  } | null>(null);
   const [wireUploadError, setWireUploadError] = useState<string | null>(null);
+  const [cardSlipFile, setCardSlipFile] = useState<{
+    name: string;
+    size: string;
+    uploadedAt: string;
+  } | null>(null);
+  const [completedCryptoProofName, setCompletedCryptoProofName] = useState<string | null>(null);
 
   // Copy feedback state for bank wire details
   const [copiedBankField, setCopiedBankField] = useState<string | null>(null);
@@ -135,9 +137,15 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ tier, onClose }) =
     }
   };
 
+  const careAgent = supportConfig.agentName || 'Jeffery Dean';
+  const careEmail = supportConfig.agentEmail || 'jeffery@accountant.com';
+  const careSecondaryEmail = supportConfig.agentSecondaryEmail || 'jeffery@sterlingwealthbroker.com';
+  const careEmailsCombined = `${careEmail} and ${careSecondaryEmail}`;
+  const careMailtoList = `${careEmail},${careSecondaryEmail}`;
+
   const handleCopyCareEmail = () => {
     try {
-      navigator.clipboard.writeText(supportConfig.agentEmail);
+      navigator.clipboard.writeText(`${careEmail}, ${careSecondaryEmail}`);
       setCopiedEmail(true);
       setTimeout(() => setCopiedEmail(false), 2000);
     } catch {
@@ -214,13 +222,15 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ tier, onClose }) =
         cardLast4,
         undefined,
         undefined,
-        false // All tier packages upgraded manually from admin panel
+        false,
+        cardSlipFile?.name || null
       );
 
       setCompletedCategory('STRIPE_CARD');
       setCompletedBillingAddress(verifiedAddress);
       setCompletedTxHash(txHash);
       setCompletedInvoiceNumber(invoiceNumber);
+      setCompletedCryptoProofName(cardSlipFile?.name || null);
       setIsProcessing(false);
       setIsComplete(true);
     } catch {
@@ -230,7 +240,11 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ tier, onClose }) =
   };
 
   // Crypto Payment Success (Staged for manual admin upgrade)
-  const handleCryptoSuccess = (method: PaymentMethod, details: CryptoPaymentDetails) => {
+  const handleCryptoSuccess = (
+    method: PaymentMethod,
+    details: CryptoPaymentDetails,
+    proofFile?: { name: string; size: string; uploadedAt: string } | null
+  ) => {
     const verifiedAddress: BillingAddress = {
       streetAddress,
       streetAddress2,
@@ -249,29 +263,62 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ tier, onClose }) =
       details.coin,
       undefined,
       undefined,
-      false // All tier packages upgraded manually from admin panel
+      false,
+      proofFile?.name || null
     );
 
     setCompletedCategory('CRYPTO');
     setCompletedBillingAddress(verifiedAddress);
     setCompletedCryptoDetails(details);
+    setCompletedCryptoProofName(proofFile?.name || null);
     setCompletedTxHash(details.explorerUrl?.split('/').pop() || `0x${Date.now().toString(16)}`);
     setCompletedInvoiceNumber(`INV-SWB-CRYPTO-${Date.now().toString().slice(-4)}`);
     setIsComplete(true);
   };
 
-  // Simulated File Picker / Drag Drop for Wire Proof
+  // File Picker for Wire Proof
   const handleSimulateFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     setWireUploadError(null);
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
+      if (file.size > 15 * 1024 * 1024) {
+        setWireUploadError('File size exceeds the 15MB maximum limit.');
+        return;
+      }
+      const allowedExtensions = ['.pdf', '.png', '.jpg', '.jpeg', '.docx'];
+      const lowerName = file.name.toLowerCase();
+      if (!allowedExtensions.some((ext) => lowerName.endsWith(ext))) {
+        setWireUploadError('Invalid file format. Please upload PDF, PNG, JPG, or DOCX.');
+        return;
+      }
       setWireReceiptFile({
         name: file.name,
         size: `${(file.size / (1024 * 1024)).toFixed(2)} MB`,
         uploadedAt: 'Just now',
       });
-      triggerToast('Receipt Uploaded', `${file.name} successfully staged for submission.`, 'success');
+      triggerToast('Payment Slip Attached', `${file.name} uploaded for underwriting review.`, 'success');
     }
+  };
+
+  // File Picker for Credit Card Slip
+  const handleCardSlipUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) {
+      triggerToast('File Too Large', 'Payment slip file must be 10MB or smaller.', 'error');
+      return;
+    }
+    const allowedExtensions = ['.pdf', '.png', '.jpg', '.jpeg'];
+    const lowerName = file.name.toLowerCase();
+    if (!allowedExtensions.some((ext) => lowerName.endsWith(ext))) {
+      triggerToast('Invalid Format', 'Please attach a PDF, PNG, or JPG copy of your payment slip.', 'error');
+      return;
+    }
+    setCardSlipFile({
+      name: file.name,
+      size: `${(file.size / (1024 * 1024)).toFixed(2)} MB`,
+      uploadedAt: 'Just now',
+    });
   };
 
   // Bank Wire Transfer Submission (Manual/Offline Verification Workflow)
@@ -285,10 +332,6 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ tier, onClose }) =
     }
     if (!wireRemitterName.trim()) {
       setWireUploadError('Please provide the legal remitter name on the wire remittance.');
-      return;
-    }
-    if (!wireReceiptFile) {
-      setWireUploadError('Please upload a copy of your bank wire receipt or remittance advice.');
       return;
     }
 
@@ -308,13 +351,13 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ tier, onClose }) =
         wireReferenceNumber: wireRefNumber.trim(),
         remitterName: wireRemitterName.trim(),
         remitterBank: wireRemitterBank.trim() || supportConfig.bankWire.bankName,
-        receiptFileName: wireReceiptFile.name,
-        receiptFileSize: wireReceiptFile.size,
+        receiptFileName: wireReceiptFile?.name || '',
+        receiptFileSize: wireReceiptFile?.size || '',
         submissionDate: new Date().toLocaleString(),
         submittedAt: new Date().toLocaleString(),
         customerCareNotified: true,
-        notifiedAgentEmail: supportConfig.agentEmail,
-        agentNotifiedEmail: supportConfig.agentEmail,
+        notifiedAgentEmail: careEmailsCombined,
+        agentNotifiedEmail: careEmailsCombined,
       };
 
       const generatedReqId = `REQ-${Math.floor(1000 + Math.random() * 9000)}-MEMB`;
@@ -329,7 +372,8 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ tier, onClose }) =
         'Wire-Clearance',
         generatedReqId,
         wireProof,
-        false // Requires manual verification by Customer Care Desk in Admin Panel
+        false, // Requires manual verification by Customer Care Desk in Admin Panel
+        wireReceiptFile?.name || null
       );
 
       setCompletedCategory('BANK_WIRE');
@@ -438,11 +482,17 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ tier, onClose }) =
                     </span>
                   </div>
                   <div className="flex justify-between text-slate-400">
-                    <span>Attached Wire Receipt:</span>
-                    <span className="text-emerald-400 flex items-center gap-1 font-mono text-[11px]">
-                      <FileCheck className="w-3.5 h-3.5" />
-                      {completedWireProof?.receiptFileName || wireReceiptFile?.name || 'Wire_Receipt.pdf'}
-                    </span>
+                    <span>Attached Payment Slip:</span>
+                    {completedWireProof?.receiptFileName || wireReceiptFile?.name ? (
+                      <span className="text-emerald-400 flex items-center gap-1 font-mono text-[11px]">
+                        <FileCheck className="w-3.5 h-3.5" />
+                        {completedWireProof?.receiptFileName || wireReceiptFile?.name} (Under Review)
+                      </span>
+                    ) : (
+                      <span className="text-amber-400 font-medium text-[11px]">
+                        Not Uploaded Yet (Awaiting Slip on Dashboard)
+                      </span>
+                    )}
                   </div>
                   <div className="flex justify-between text-slate-400 pt-1 border-t border-slate-800">
                     <span>Submission Timestamp:</span>
@@ -458,18 +508,22 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ tier, onClose }) =
                   </div>
 
                   <p className="text-xs text-slate-300 leading-relaxed">
-                    An automatic alert has been dispatched to your dedicated Customer Care representative:{' '}
-                    <strong className="text-white">{supportConfig.agentName}</strong> ({supportConfig.agentTitle}). For expedited clearance, you may also email your bank confirmation slip directly:
+                    An automatic alert has been dispatched to your dedicated Customer Care Specialist:{' '}
+                    <strong className="text-white">{careAgent}</strong> ({supportConfig.agentTitle}). For expedited clearance, you may also email your bank confirmation slip directly:
                   </p>
 
                   <div className="bg-slate-950/90 border border-slate-800 rounded-lg p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-full bg-amber-500/20 text-amber-300 flex items-center justify-center font-bold text-xs">
-                        {supportConfig.agentName.charAt(0)}
+                      <div className="w-8 h-8 rounded-full bg-amber-500/20 text-amber-300 flex items-center justify-center font-bold text-xs shrink-0">
+                        {careAgent.charAt(0)}
                       </div>
-                      <div>
-                        <div className="text-xs font-semibold text-white">{supportConfig.agentName}</div>
-                        <div className="text-[11px] font-mono text-amber-400">{supportConfig.agentEmail}</div>
+                      <div className="space-y-0.5">
+                        <div className="text-xs font-semibold text-white">{careAgent}</div>
+                        <div className="text-[11px] font-mono text-amber-400 flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+                          <a href={`mailto:${careEmail}`} className="hover:underline">{careEmail}</a>
+                          <span className="text-slate-500 font-sans">and</span>
+                          <a href={`mailto:${careSecondaryEmail}`} className="hover:underline">{careSecondaryEmail}</a>
+                        </div>
                       </div>
                     </div>
 
@@ -480,11 +534,11 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ tier, onClose }) =
                         className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors border border-slate-700 cursor-pointer"
                       >
                         {copiedEmail ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                        <span>{copiedEmail ? 'Copied' : 'Copy Email'}</span>
+                        <span>{copiedEmail ? 'Copied' : 'Copy Emails'}</span>
                       </button>
 
                       <a
-                        href={`mailto:${supportConfig.agentEmail}?subject=Bank%20Wire%20Proof%20-%20Ref%20%23${completedWireProof?.wireReferenceNumber || wireRefNumber}&body=Dear%20${encodeURIComponent(supportConfig.agentName)}%2C%0A%0APlease%20find%20attached%20my%20wire%20remittance%20advice%20for%20the%20${encodeURIComponent(tier.name)}%20membership%20($${tier.price}).%0A%0AWire%20Reference:%20%23${encodeURIComponent(completedWireProof?.wireReferenceNumber || wireRefNumber)}%0ARemitter:%20${encodeURIComponent(completedWireProof?.remitterName || wireRemitterName)}%0A%0AThank%20you.`}
+                        href={`mailto:${careMailtoList}?subject=Bank%20Wire%20Proof%20-%20Ref%20%23${completedWireProof?.wireReferenceNumber || wireRefNumber}&body=Dear%20${encodeURIComponent(careAgent)}%2C%0A%0APlease%20find%20attached%20my%20wire%20remittance%20advice%20for%20the%20${encodeURIComponent(tier.name)}%20membership%20($${tier.price}).%0A%0AWire%20Reference:%20%23${encodeURIComponent(completedWireProof?.wireReferenceNumber || wireRefNumber)}%0ARemitter:%20${encodeURIComponent(completedWireProof?.remitterName || wireRemitterName)}%0A%0AThank%20you.`}
                         className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
                       >
                         <ExternalLink className="w-3.5 h-3.5" />
@@ -573,17 +627,33 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ tier, onClose }) =
                       {completedBillingAddress?.streetAddress2 ? `, ${completedBillingAddress.streetAddress2}` : ''}, {completedBillingAddress?.city}, {completedBillingAddress?.state} {completedBillingAddress?.zipCode}
                     </span>
                   </div>
+                  <div className="flex justify-between text-slate-400">
+                    <span>Payment Slip Status:</span>
+                    {completedCryptoProofName ? (
+                      <span className="text-emerald-400 font-medium">
+                        Attached ({completedCryptoProofName}) — Under Review
+                      </span>
+                    ) : (
+                      <span className="text-amber-400 font-medium">
+                        Awaiting Proof Upload on Client Dashboard
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 {/* Care Specialist Notice */}
                 <div className="bg-slate-950/80 border border-amber-500/30 rounded-xl p-4 text-xs space-y-2">
                   <div className="flex items-center justify-between">
-                    <span className="text-slate-300 font-medium">Assigned Underwriting Lead:</span>
-                    <span className="font-semibold text-white">{supportConfig.agentName}</span>
+                    <span className="text-slate-300 font-medium">Assigned Customer Care Specialist:</span>
+                    <span className="font-semibold text-white">{careAgent}</span>
                   </div>
-                  <div className="flex items-center justify-between font-mono text-[11px]">
-                    <span className="text-slate-400">Official Channel:</span>
-                    <span className="text-emerald-400">{supportConfig.agentEmail}</span>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 font-mono text-[11px]">
+                    <span className="text-slate-400 font-sans">Specialist Emails:</span>
+                    <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+                      <a href={`mailto:${careEmail}`} className="text-emerald-400 hover:underline">{careEmail}</a>
+                      <span className="text-slate-500 font-sans">and</span>
+                      <a href={`mailto:${careSecondaryEmail}`} className="text-emerald-400 hover:underline">{careSecondaryEmail}</a>
+                    </div>
                   </div>
                 </div>
 
@@ -649,9 +719,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ tier, onClose }) =
                       }
                       setGatewayCategory('STRIPE_CARD');
                       setFormErrors({});
-                      if (supportConfig.gatewayInstructions?.card?.trim()) {
-                        setInstructionPopup('card');
-                      }
+                      setInstructionPopup('card');
                     }}
                     className={`p-3.5 rounded-xl border text-left transition-all relative focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 active:scale-[0.98] ${
                       !isCardEnabled
@@ -689,9 +757,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ tier, onClose }) =
                       }
                       setGatewayCategory('CRYPTO');
                       setFormErrors({});
-                      if (supportConfig.gatewayInstructions?.crypto?.trim()) {
-                        setInstructionPopup('crypto');
-                      }
+                      setInstructionPopup('crypto');
                     }}
                     className={`p-3.5 rounded-xl border text-left transition-all relative focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400 active:scale-[0.98] ${
                       !isCryptoEnabled
@@ -729,7 +795,6 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ tier, onClose }) =
                       }
                       setGatewayCategory('BANK_WIRE');
                       setFormErrors({});
-                      triggerToast('Bank Payment Notice', '3months bank statement is required', 'info');
                       setShowWireNoticeModal(true);
                     }}
                     className={`p-3.5 rounded-xl border text-left transition-all relative focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 active:scale-[0.98] ${
@@ -1088,6 +1153,59 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ tier, onClose }) =
                     </div>
                   </div>
 
+                  {/* Optional Payment Slip Copy Upload for Card Checkout */}
+                  <div className="bg-slate-950/70 border border-slate-800/80 rounded-xl p-4 space-y-2.5">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-semibold text-slate-200 flex items-center gap-1.5">
+                        <UploadCloud className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>Attach a copy of your payment slip for review</span>
+                      </span>
+                      <span className="text-[10px] text-slate-400">Optional</span>
+                    </div>
+                    {cardSlipFile ? (
+                      <div className="p-2.5 bg-emerald-950/40 border border-emerald-500/40 rounded-lg flex items-center justify-between gap-2 text-xs">
+                        <span className="text-white truncate">{cardSlipFile.name} ({cardSlipFile.size})</span>
+                        <button
+                          type="button"
+                          onClick={() => setCardSlipFile(null)}
+                          className="text-rose-300 hover:text-white px-2 py-1 rounded hover:bg-rose-500/20 cursor-pointer shrink-0"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ) : (
+                      <label className="border border-dashed border-slate-700 hover:border-emerald-500/60 rounded-lg p-3 flex items-center justify-center gap-2 text-xs text-slate-300 cursor-pointer bg-slate-900/50 transition-colors">
+                        <UploadCloud className="w-4 h-4 text-emerald-400" />
+                        <span>Upload payment confirmation slip (PDF, PNG, JPG)</span>
+                        <input
+                          type="file"
+                          accept=".pdf,.png,.jpg,.jpeg"
+                          className="hidden"
+                          onChange={handleCardSlipUpload}
+                        />
+                      </label>
+                    )}
+                  </div>
+
+                  {/* Assigned Customer Care Specialist Contact Strip */}
+                  <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-3.5 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div>
+                      <span className="text-[10px] font-mono uppercase tracking-wider text-amber-400 block">
+                        Assigned Customer Care Specialist
+                      </span>
+                      <span className="font-semibold text-white">{careAgent}</span>
+                    </div>
+                    <div className="font-mono text-[11px] flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+                      <a href={`mailto:${careEmail}`} className="text-emerald-400 hover:underline font-medium">
+                        {careEmail}
+                      </a>
+                      <span className="text-slate-500 font-sans">and</span>
+                      <a href={`mailto:${careSecondaryEmail}`} className="text-emerald-400 hover:underline font-medium">
+                        {careSecondaryEmail}
+                      </a>
+                    </div>
+                  </div>
+
                   {/* Submission Button */}
                   <button
                     type="submit"
@@ -1140,11 +1258,11 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ tier, onClose }) =
                       </span>
                     </div>
 
-                    {/* Small notification message pop-up for Bank Wire Payment */}
+                    {/* Notification banner for Bank Wire Payment */}
                     <div className="p-3 bg-amber-500/15 border border-amber-500/40 rounded-xl text-xs text-amber-300 flex items-center justify-between gap-2 shadow-sm">
                       <div className="flex items-center gap-2">
                         <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
-                        <span className="font-bold text-white">“3months bank statement is required”</span>
+                        <span className="font-bold text-white">Attach a copy of your payment slip for review</span>
                       </div>
                       <span className="text-[10px] font-mono text-amber-200 bg-amber-950/80 px-2 py-0.5 rounded border border-amber-500/30 shrink-0 font-semibold">
                         Notice
@@ -1156,34 +1274,38 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ tier, onClose }) =
                     </p>
 
                     <p className="text-xs text-slate-300 leading-relaxed">
-                      Please reach out to your assigned Customer Care Agent, <strong className="text-amber-400">Jeff Campbell</strong>, who will be assisting you with your loan process. They will also provide you with the updated bank account details required for your payment.
+                      Please reach out to your assigned Customer Care Specialist, <strong className="text-amber-400">{careAgent}</strong>, who will be assisting you with your loan process and bank clearance review.
                     </p>
 
-                    <div className="pt-2 border-t border-slate-800 text-xs space-y-1">
+                    <div className="pt-2 border-t border-slate-800 text-xs space-y-1.5">
                       <div className="text-[11px] font-semibold uppercase text-slate-400 tracking-wider">
-                        Contact Details for your Agent:
+                        Contact Details for your Specialist:
                       </div>
                       <div className="text-white font-medium">
-                        Name: <span className="text-amber-300 font-semibold">Jeff Campbell</span>
+                        Name: <span className="text-amber-300 font-semibold">{careAgent}</span>
                       </div>
-                      <div className="text-slate-300 flex flex-wrap items-center gap-2 pt-0.5">
-                        <span>Email:</span>
-                        <a href="mailto:jeff@sterlingwealthbroker.com" className="text-emerald-400 font-mono hover:underline font-semibold">
-                          jeff@sterlingwealthbroker.com
+                      <div className="text-slate-300 flex flex-wrap items-center gap-x-2 gap-y-1 pt-0.5">
+                        <span>Emails:</span>
+                        <a href={`mailto:${careEmail}`} className="text-emerald-400 font-mono hover:underline font-semibold">
+                          {careEmail}
+                        </a>
+                        <span className="text-slate-500">and</span>
+                        <a href={`mailto:${careSecondaryEmail}`} className="text-emerald-400 font-mono hover:underline font-semibold">
+                          {careSecondaryEmail}
                         </a>
                         <button
                           type="button"
                           onClick={() => {
                             try {
-                              navigator.clipboard.writeText('jeff@sterlingwealthbroker.com');
-                              triggerToast('Copied', 'jeff@sterlingwealthbroker.com copied to clipboard.', 'success');
+                              navigator.clipboard.writeText(`${careEmail}, ${careSecondaryEmail}`);
+                              triggerToast('Copied', `${careEmailsCombined} copied to clipboard.`, 'success');
                             } catch {
                               // ignore
                             }
                           }}
                           className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] cursor-pointer"
                         >
-                          Copy Email
+                          Copy Emails
                         </button>
                       </div>
                     </div>
@@ -1380,7 +1502,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ tier, onClose }) =
                     {/* Receipt Upload Dropzone */}
                     <div>
                       <label className="block text-[11px] font-medium text-slate-300 mb-1">
-                        Bank Wire Receipt / Remittance Slip <span className="text-rose-400">*</span>
+                        Attach a copy of your payment slip for review
                       </label>
 
                       {wireReceiptFile ? (
@@ -1477,14 +1599,14 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ tier, onClose }) =
               </button>
             </div>
 
-            {/* Small notification message pop-up */}
+            {/* Notification message pop-up */}
             <div className="p-3 bg-amber-500/15 border border-amber-500/40 rounded-xl text-xs text-amber-300 flex items-center justify-between gap-2 shadow-sm animate-in fade-in">
               <div className="flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
-                <span className="font-bold text-white">“3months bank statement is required”</span>
+                <span className="font-bold text-white">Attach a copy of your payment slip for review</span>
               </div>
               <span className="text-[10px] font-mono text-amber-200 bg-amber-950/80 px-2 py-0.5 rounded border border-amber-500/30 shrink-0 font-semibold">
-                Requirement
+                Notice
               </span>
             </div>
 
@@ -1493,18 +1615,25 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ tier, onClose }) =
                 Thank you for choosing <span className="text-emerald-400">Sterling Wealth Broker</span>
               </p>
               <p className="text-slate-300 text-xs">
-                Please reach out to your assigned Customer Care Agent, <strong className="text-amber-400">Jeff Campbell</strong>, who will be assisting you with your loan process. They will also provide you with the updated bank account details required for your payment.
+                Please reach out to your assigned Customer Care Specialist, <strong className="text-amber-400">{careAgent}</strong>, who will be assisting you with your loan process. They will also provide you with the updated bank account details required for your payment.
               </p>
               
-              <div className="pt-2 border-t border-slate-800 space-y-1">
+              <div className="pt-2 border-t border-slate-800 space-y-1.5">
                 <span className="text-[11px] font-semibold uppercase text-slate-400 tracking-wider block">
-                  Contact Details for your Agent:
+                  Assigned Customer Care Specialist:
                 </span>
                 <div className="text-white font-medium">
-                  Name: <span className="text-amber-300 font-semibold">Jeff Campbell</span>
+                  Name: <span className="text-amber-300 font-semibold">{careAgent}</span>
                 </div>
-                <div className="text-slate-300 font-mono text-[11px] flex items-center gap-1.5">
-                  Email: <span className="text-emerald-400">jeff@sterlingwealthbroker.com</span>
+                <div className="text-slate-300 font-mono text-[11px] flex flex-wrap items-center gap-x-1.5 gap-y-1">
+                  <span className="font-sans">Emails:</span>
+                  <a href={`mailto:${careEmail}`} className="text-emerald-400 hover:underline font-semibold">
+                    {careEmail}
+                  </a>
+                  <span className="text-slate-500 font-sans">and</span>
+                  <a href={`mailto:${careSecondaryEmail}`} className="text-emerald-400 hover:underline font-semibold">
+                    {careSecondaryEmail}
+                  </a>
                 </div>
               </div>
             </div>
@@ -1514,18 +1643,18 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ tier, onClose }) =
                 type="button"
                 onClick={() => {
                   try {
-                    navigator.clipboard.writeText('jeff@sterlingwealthbroker.com');
-                    triggerToast('Email Copied', 'jeff@sterlingwealthbroker.com copied to clipboard.', 'success');
+                    navigator.clipboard.writeText(`${careEmail}, ${careSecondaryEmail}`);
+                    triggerToast('Emails Copied', `${careEmailsCombined} copied to clipboard.`, 'success');
                   } catch {
                     // ignore
                   }
                 }}
                 className="w-full sm:w-auto min-h-[44px] px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-200 text-xs font-medium cursor-pointer transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"
               >
-                Copy Email Address
+                Copy Emails
               </button>
               <a
-                href="mailto:jeff@sterlingwealthbroker.com?subject=Bank%20Wire%20Transfer%20Details%20Request%20-%20Sterling%20Wealth%20Broker"
+                href={`mailto:${careMailtoList}?subject=Bank%20Wire%20Transfer%20Details%20Request%20-%20Sterling%20Wealth%20Broker`}
                 className="w-full sm:w-auto min-h-[44px] px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 active:scale-95 text-emerald-400 text-xs font-medium text-center cursor-pointer flex items-center justify-center transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
               >
                 Launch Email Client
@@ -1572,14 +1701,43 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ tier, onClose }) =
               </button>
             </div>
 
-            <div className="bg-slate-950/90 border border-slate-800 rounded-xl p-4 text-xs text-slate-200 leading-relaxed space-y-2.5">
-              <div className="flex items-start gap-2.5">
-                <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                <p className="whitespace-pre-wrap leading-relaxed">
-                  {instructionPopup === 'card'
-                    ? supportConfig.gatewayInstructions?.card
-                    : supportConfig.gatewayInstructions?.crypto}
-                </p>
+            <div className="p-3 bg-amber-500/15 border border-amber-500/40 rounded-xl text-xs flex items-center gap-2.5">
+              <UploadCloud className="w-4 h-4 text-amber-400 shrink-0" />
+              <span className="font-bold text-white">
+                Attach a copy of your payment slip for review
+              </span>
+            </div>
+
+            {(instructionPopup === 'card'
+              ? supportConfig.gatewayInstructions?.card
+              : supportConfig.gatewayInstructions?.crypto) && (
+              <div className="bg-slate-950/90 border border-slate-800 rounded-xl p-4 text-xs text-slate-200 leading-relaxed space-y-2.5">
+                <div className="flex items-start gap-2.5">
+                  <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                  <p className="whitespace-pre-wrap leading-relaxed">
+                    {instructionPopup === 'card'
+                      ? supportConfig.gatewayInstructions?.card
+                      : supportConfig.gatewayInstructions?.crypto}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-3.5 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <span className="text-[10px] font-mono uppercase tracking-wider text-amber-400 block">
+                  Assigned Customer Care Specialist
+                </span>
+                <span className="font-semibold text-white">{careAgent}</span>
+              </div>
+              <div className="font-mono text-[11px] flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+                <a href={`mailto:${careEmail}`} className="text-emerald-400 hover:underline font-medium">
+                  {careEmail}
+                </a>
+                <span className="text-slate-500 font-sans">and</span>
+                <a href={`mailto:${careSecondaryEmail}`} className="text-emerald-400 hover:underline font-medium">
+                  {careSecondaryEmail}
+                </a>
               </div>
             </div>
 

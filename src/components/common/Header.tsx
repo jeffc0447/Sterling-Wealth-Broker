@@ -248,9 +248,11 @@ export const Header: React.FC = () => {
     currentView === 'PUBLIC' &&
     (publicPage === 'personal-loan' ||
       publicPage === 'business-loan' ||
-      publicPage === 'financial-instrument' ||
-      publicPage === 'pricing' ||
-      publicPage === 'membership');
+      publicPage === 'financial-instrument');
+
+  const isMembershipTiersActive =
+    currentView === 'PUBLIC' &&
+    (publicPage === 'pricing' || publicPage === 'membership');
 
   const handleAboutItemClick = (page: PublicPage) => {
     setIsAboutDropdownOpen(false);
@@ -353,7 +355,7 @@ export const Header: React.FC = () => {
           </div>
 
           {/* Desktop Navigation Links */}
-          <nav className="hidden lg:flex items-center gap-8 text-sm font-medium">
+          <nav className="hidden lg:flex items-center gap-7 text-sm font-medium">
             {/* 1. Home */}
             <button
               onClick={() => handleNavClick('home')}
@@ -472,7 +474,7 @@ export const Header: React.FC = () => {
               )}
             </div>
 
-            {/* 3. Loan Products (Dropdown Menu incl. Membership Tiers) */}
+            {/* 3. Loan Products (Dropdown Menu) */}
             <div
               className="relative"
               ref={dropdownRef}
@@ -482,7 +484,7 @@ export const Header: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setIsProductsDropdownOpen(!isProductsDropdownOpen)}
-                className={`flex items-center gap-1.5 transition-colors py-1 cursor-pointer ${
+                className={`flex items-center gap-1.5 transition-colors py-1 cursor-pointer whitespace-nowrap shrink-0 ${
                   isLoanProductsActive
                     ? 'text-emerald-400 font-semibold border-b-2 border-emerald-400'
                     : 'text-slate-300 hover:text-white'
@@ -504,7 +506,7 @@ export const Header: React.FC = () => {
                   className="absolute left-0 mt-2 w-80 rounded-2xl bg-slate-900/95 backdrop-blur-md border border-slate-700/80 shadow-2xl p-2 z-50 animate-in fade-in zoom-in-95 duration-150"
                 >
                   <div className="px-3 py-2 border-b border-slate-800 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
-                    Institutional Debt &amp; Membership Catalog
+                    Institutional Debt Catalog
                   </div>
 
                   <div className="p-1 space-y-1">
@@ -573,30 +575,6 @@ export const Header: React.FC = () => {
                         </p>
                       </div>
                     </button>
-
-                    {/* Membership Tiers (moved under Loan Products) */}
-                    <button
-                      type="button"
-                      onClick={() => handleNavClick('pricing')}
-                      className={`w-full text-left p-2.5 rounded-xl transition flex items-start gap-3 hover:bg-slate-800/80 cursor-pointer ${
-                        publicPage === 'pricing' || publicPage === 'membership'
-                          ? 'bg-slate-800 border border-emerald-500/30'
-                          : 'border border-transparent'
-                      }`}
-                    >
-                      <div className="w-8 h-8 rounded-lg bg-teal-500/10 border border-teal-500/30 text-teal-400 flex items-center justify-center shrink-0 mt-0.5">
-                        <ShieldCheck className="w-4 h-4" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-xs font-bold text-white flex items-center justify-between">
-                          <span>Membership Tiers</span>
-                          <span className="text-[10px] text-teal-400 font-mono">Tier 1 – 4</span>
-                        </div>
-                        <p className="text-[11px] text-slate-400 mt-0.5 leading-snug">
-                          Silver, Gold, Platinum &amp; Diamond borrowing limits and underwriting SLAs.
-                        </p>
-                      </div>
-                    </button>
                   </div>
 
                   <div className="pt-2 mt-1 border-t border-slate-800 px-3 py-1.5 flex items-center justify-between text-[11px] text-slate-400">
@@ -613,11 +591,24 @@ export const Header: React.FC = () => {
               )}
             </div>
 
-            {/* 4. Contact */}
+            {/* 4. Membership Tiers (Top-Level Header Navigation Link) */}
+            <button
+              type="button"
+              onClick={() => handleNavClick('pricing')}
+              className={`transition-colors py-1 cursor-pointer whitespace-nowrap shrink-0 ${
+                isMembershipTiersActive
+                  ? 'text-emerald-400 font-semibold border-b-2 border-emerald-400'
+                  : 'text-slate-300 hover:text-white'
+              }`}
+            >
+              Membership Tiers
+            </button>
+
+            {/* 5. Contact */}
             <button
               type="button"
               onClick={() => handleNavClick('contact')}
-              className={`transition-colors py-1 cursor-pointer ${
+              className={`transition-colors py-1 cursor-pointer whitespace-nowrap shrink-0 ${
                 currentView === 'PUBLIC' && publicPage === 'contact'
                   ? 'text-emerald-400 font-semibold border-b-2 border-emerald-400'
                   : 'text-slate-300 hover:text-white'
@@ -838,7 +829,7 @@ export const Header: React.FC = () => {
                 )}
               </div>
 
-              {/* Accordion: Loan Products (includes Membership Tiers) */}
+              {/* Accordion: Loan Products */}
               <div className="rounded-xl border border-slate-800/80 bg-slate-900/60 overflow-hidden">
                 <button
                   type="button"
@@ -911,28 +902,22 @@ export const Header: React.FC = () => {
                       </div>
                       <span className="text-[10px] text-amber-400 font-mono bg-amber-500/10 px-2 py-0.5 rounded shrink-0">$15M+</span>
                     </button>
-
-                    <button
-                      type="button"
-                      onClick={() => handleNavClick('pricing')}
-                      className={`w-full min-h-[44px] text-left p-2.5 rounded-lg text-xs transition flex items-center justify-between cursor-pointer ${
-                        publicPage === 'pricing' || publicPage === 'membership'
-                          ? 'bg-slate-800 text-teal-400 font-semibold'
-                          : 'text-slate-300 hover:bg-slate-900'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2.5">
-                        <ShieldCheck className="w-4 h-4 text-teal-400 shrink-0" />
-                        <div>
-                          <span className="font-medium text-white block">Membership Tiers</span>
-                          <span className="text-[10px] text-slate-400 block">Silver, Gold, Platinum &amp; Diamond</span>
-                        </div>
-                      </div>
-                      <span className="text-[10px] text-teal-400 font-mono bg-teal-500/10 px-2 py-0.5 rounded shrink-0">Tier 1–4</span>
-                    </button>
                   </div>
                 )}
               </div>
+
+              <button
+                type="button"
+                onClick={() => handleNavClick('pricing')}
+                className={`w-full min-h-[44px] text-left py-2.5 px-4 rounded-xl text-sm font-semibold transition flex items-center justify-between cursor-pointer ${
+                  isMembershipTiersActive
+                    ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                    : 'text-slate-200 hover:bg-slate-900 active:bg-slate-800'
+                }`}
+              >
+                <span>Membership Tiers</span>
+                <span className="text-[11px] font-mono text-emerald-400">Tier 1–4</span>
+              </button>
 
               <button
                 type="button"

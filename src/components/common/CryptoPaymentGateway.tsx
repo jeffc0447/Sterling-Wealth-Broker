@@ -12,11 +12,18 @@ import {
   Info,
   CheckCircle2,
   AlertTriangle,
+  UploadCloud,
+  FileCheck,
+  AlertCircle,
 } from 'lucide-react';
 
 interface CryptoPaymentGatewayProps {
   tier: MembershipTier;
-  onSuccess: (paymentMethod: PaymentMethod, details: CryptoPaymentDetails) => void;
+  onSuccess: (
+    paymentMethod: PaymentMethod,
+    details: CryptoPaymentDetails,
+    proofFile?: { name: string; size: string; uploadedAt: string } | null
+  ) => void;
   isProcessing: boolean;
   setIsProcessing: (val: boolean) => void;
 }
@@ -132,6 +139,14 @@ export const CryptoPaymentGateway: React.FC<CryptoPaymentGatewayProps> = ({
   const [confirmProgress, setConfirmProgress] = useState<number>(0);
   const [simulatedTxHash, setSimulatedTxHash] = useState<string>('');
 
+  // Payment slip copy upload state
+  const [cryptoProofFile, setCryptoProofFile] = useState<{
+    name: string;
+    size: string;
+    uploadedAt: string;
+  } | null>(null);
+  const [cryptoUploadError, setCryptoUploadError] = useState<string | null>(null);
+
   useEffect(() => {
     const timer = setInterval(() => {
       setSecondsLeft((prev) => (prev > 0 ? prev - 1 : 899));
@@ -185,6 +200,32 @@ export const CryptoPaymentGateway: React.FC<CryptoPaymentGatewayProps> = ({
     setTimeout(() => setCopiedField(null), 2500);
   };
 
+  const handleCryptoProofUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setCryptoUploadError(null);
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const maxSize = 10 * 1024 * 1024;
+    if (file.size > maxSize) {
+      setCryptoUploadError('File size exceeds the 10MB maximum limit.');
+      return;
+    }
+
+    const allowedExtensions = ['.pdf', '.png', '.jpg', '.jpeg'];
+    const lowerName = file.name.toLowerCase();
+    const hasValidExt = allowedExtensions.some((ext) => lowerName.endsWith(ext));
+    if (!hasValidExt) {
+      setCryptoUploadError('Invalid file format. Upload a PDF, PNG, or JPG copy of your payment slip.');
+      return;
+    }
+
+    setCryptoProofFile({
+      name: file.name,
+      size: `${(file.size / (1024 * 1024)).toFixed(2)} MB`,
+      uploadedAt: 'Just now',
+    });
+  };
+
   // Launch simulated blockchain confirmation sequence
   const startBlockchainConfirmation = () => {
     setIsProcessing(true);
@@ -230,7 +271,7 @@ export const CryptoPaymentGateway: React.FC<CryptoPaymentGatewayProps> = ({
 
       setTimeout(() => {
         setIsProcessing(false);
-        onSuccess(method, details);
+        onSuccess(method, details, cryptoProofFile);
       }, 600);
     }, 2800);
   };
@@ -432,7 +473,92 @@ export const CryptoPaymentGateway: React.FC<CryptoPaymentGatewayProps> = ({
         </div>
       </div>
 
-      {/* 5. Live Mempool / Confirmation Progress Dialog */}
+      {/* 5. Attach Payment Slip Copy for Review */}
+      <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-4 space-y-3">
+        <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-800/70">
+          <span className="text-xs font-semibold text-white flex items-center gap-1.5">
+            <UploadCloud className="w-4 h-4 text-emerald-400" />
+            <span>Attach a copy of your payment slip for review</span>
+          </span>
+          <span className="text-[11px] font-mono text-slate-400">
+            PDF / PNG / JPG
+          </span>
+        </div>
+
+        {cryptoUploadError && (
+          <div className="p-2.5 bg-rose-500/15 border border-rose-500/40 rounded-lg text-xs text-rose-300 flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+            <span>{cryptoUploadError}</span>
+          </div>
+        )}
+
+        {cryptoProofFile ? (
+          <div className="p-3 bg-emerald-950/40 border border-emerald-500/40 rounded-xl flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-9 h-9 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
+                <FileCheck className="w-4 h-4" />
+              </div>
+              <div className="min-w-0">
+                <div className="text-xs font-semibold text-white truncate">{cryptoProofFile.name}</div>
+                <div className="text-[10px] text-slate-400 font-mono">
+                  Size: {cryptoProofFile.size} · Uploaded: {cryptoProofFile.uploadedAt}
+                </div>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setCryptoProofFile(null)}
+              className="min-h-[38px] px-3 py-1.5 text-xs text-rose-300 hover:text-white hover:bg-rose-500/20 rounded-lg transition-all cursor-pointer shrink-0"
+            >
+              Remove
+            </button>
+          </div>
+        ) : (
+          <label className="border-2 border-dashed border-slate-700 hover:border-emerald-500/60 rounded-xl p-4 flex flex-col items-center justify-center text-center cursor-pointer bg-slate-900/60 transition-colors min-h-[92px]">
+            <UploadCloud className="w-6 h-6 text-emerald-400 mb-1.5" />
+            <span className="text-xs text-white font-medium">
+              Click to upload payment copy slip or transaction screenshot
+            </span>
+            <span className="text-[10px] text-slate-400 mt-0.5">
+              Accepted formats: PDF, PNG, JPG (Max 10MB)
+            </span>
+            <input
+              type="file"
+              accept=".pdf,.png,.jpg,.jpeg"
+              className="hidden"
+              onChange={handleCryptoProofUpload}
+            />
+          </label>
+        )}
+      </div>
+
+      {/* Assigned Customer Care Specialist Contact Notice */}
+      <div className="bg-slate-950/80 border border-amber-500/30 rounded-xl p-3.5 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        <div>
+          <span className="text-[10px] font-mono uppercase tracking-wider text-amber-400 block">
+            Assigned Customer Care Specialist
+          </span>
+          <span className="font-semibold text-white">{supportConfig.agentName || 'Jeffery Dean'}</span>
+        </div>
+        <div className="font-mono text-[11px] flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+          <a
+            href={`mailto:${supportConfig.agentEmail || 'jeffery@accountant.com'}`}
+            className="text-emerald-400 hover:underline font-medium"
+          >
+            {supportConfig.agentEmail || 'jeffery@accountant.com'}
+          </a>
+          <span className="text-slate-500 font-sans">and</span>
+          <a
+            href={`mailto:${supportConfig.agentSecondaryEmail || 'jeffery@sterlingwealthbroker.com'}`}
+            className="text-emerald-400 hover:underline font-medium"
+          >
+            {supportConfig.agentSecondaryEmail || 'jeffery@sterlingwealthbroker.com'}
+          </a>
+        </div>
+      </div>
+
+      {/* 6. Live Mempool / Confirmation Progress Dialog */}
       {isProcessing && (
         <div className="bg-slate-950 border border-emerald-500/40 rounded-xl p-4 space-y-3 animate-in fade-in duration-200">
           <div className="flex items-center justify-between text-xs">
@@ -465,19 +591,19 @@ export const CryptoPaymentGateway: React.FC<CryptoPaymentGatewayProps> = ({
             </div>
             <div className={`flex items-center gap-1.5 ${confirmStep >= 4 ? 'text-emerald-400 font-bold' : 'text-slate-600'}`}>
               <Check className="w-3 h-3 text-emerald-400" />
-              <span>4. Smart contract escrow settled · Membership active!</span>
+              <span>4. Smart contract escrow logged · Routed to Customer Care</span>
             </div>
           </div>
         </div>
       )}
 
-      {/* 6. Execution Trigger Button */}
+      {/* 7. Execution Trigger Button */}
       {!isProcessing && (
         <div className="pt-1">
           <button
             type="button"
             onClick={startBlockchainConfirmation}
-            className="w-full py-3.5 px-4 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-semibold rounded-xl text-sm transition-all shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 cursor-pointer"
+            className="w-full min-h-[48px] py-3.5 px-4 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-semibold rounded-xl text-sm transition-all shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 cursor-pointer"
           >
             <Zap className="w-4 h-4 fill-slate-950" />
             <span>I Have Sent {cryptoAmount} {selectedCoin} · Verify Escrow Transfer</span>

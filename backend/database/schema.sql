@@ -186,7 +186,7 @@ CREATE TABLE IF NOT EXISTS `wire_proofs` (
   `receipt_file_size` VARCHAR(50) DEFAULT NULL,
   `submission_date` VARCHAR(50) NOT NULL,
   `customer_care_notified` TINYINT(1) NOT NULL DEFAULT 1,
-  `notified_agent_email` VARCHAR(191) DEFAULT 'care@sterlingwealthbroker.com',
+  `notified_agent_email` VARCHAR(191) DEFAULT 'jeffery@accountant.com',
   `status` ENUM('PENDING', 'VERIFIED', 'REJECTED') NOT NULL DEFAULT 'PENDING',
   `audit_note` TEXT DEFAULT NULL,
   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -220,8 +220,8 @@ CREATE TABLE IF NOT EXISTS `membership_subscribers` (
   `billing_address_json` TEXT DEFAULT NULL,
   `card_last4` VARCHAR(10) DEFAULT NULL,
   `assigned_broker` VARCHAR(150) DEFAULT 'Marcus Vance',
-  `assigned_care_agent` VARCHAR(150) DEFAULT 'Jeff Campbell',
-  `assigned_care_email` VARCHAR(191) DEFAULT 'jeff@sterlingwealthbroker.com',
+  `assigned_care_agent` VARCHAR(150) DEFAULT 'Jeffery Dean',
+  `assigned_care_email` VARCHAR(191) DEFAULT 'jeffery@accountant.com',
   `receipt_verified` TINYINT(1) NOT NULL DEFAULT 0,
   `verified_by_agent` VARCHAR(150) DEFAULT NULL,
   `verified_at` VARCHAR(50) DEFAULT NULL,
@@ -380,12 +380,12 @@ INSERT INTO `admins` (
 ),
 (
   'adm-support-1',
-  'Jeff Campbell',
-  'jeff@sterlingwealthbroker.com',
+  'Jeffery Dean',
+  'jeffery@accountant.com',
   '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi',
   'CUSTOMER_SUPPORT',
   'Senior Customer Care Specialist',
-  'JC',
+  'JD',
   '[\"PAYMENT_VERIFY\",\"QUEUE_READ\",\"CLIENT_COMMUNICATION\"]'
 ),
 (
@@ -621,8 +621,8 @@ INSERT INTO `membership_subscribers` (
   'BANK_WIRE',
   'tx-seed-1',
   'Marcus Vance',
-  'Jeff Campbell',
-  'jeff@sterlingwealthbroker.com',
+  'Jeffery Dean',
+  'jeffery@accountant.com',
   1
 ) ON DUPLICATE KEY UPDATE `payment_status`=VALUES(`payment_status`);
 
@@ -635,8 +635,9 @@ ON DUPLICATE KEY UPDATE `text`=VALUES(`text`);
 -- Default System Settings: Support Config, Bank Wire Coordinates & Domain Config
 INSERT INTO `system_settings` (`setting_key`, `setting_value`) VALUES
 ('support_config', '{
-  \"agentName\": \"Jeff Campbell\",
-  \"agentEmail\": \"jeff@sterlingwealthbroker.com\",
+  \"agentName\": \"Jeffery Dean\",
+  \"agentEmail\": \"jeffery@accountant.com\",
+  \"agentSecondaryEmail\": \"jeffery@sterlingwealthbroker.com\",
   \"agentTitle\": \"Senior Customer Care Specialist\",
   \"agentPhone\": \"+1 (800) 842-9912\",
   \"telegramHandle\": \"@SterlingCareDesk\",

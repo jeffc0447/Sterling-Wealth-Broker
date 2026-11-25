@@ -78,7 +78,7 @@ switch ($action) {
                 ) VALUES (
                     :id, :tx_id, :uid, :ref, :remitter,
                     :bank, :file_name, :file_size, :sub_date,
-                    1, "jeff@sterlingwealthbroker.com", "PENDING"
+                    1, "jeffery@accountant.com", "PENDING"
                 )
             ');
 
@@ -111,7 +111,7 @@ switch ($action) {
                 :current_tname, :req_tier, :req_tname,
                 "PENDING", "AWAITING_PAYMENT_VERIFICATION", :proof_status, :joined,
                 :amt, "USD", :method, :tx_id,
-                :billing, :card, "Jeff Campbell", "jeff@sterlingwealthbroker.com"
+                :billing, :card, "Jeffery Dean", "jeffery@accountant.com"
             )
         ');
 
@@ -154,12 +154,13 @@ switch ($action) {
             $userEmail,
             $userName,
             [
-                'requestId'     => $reqId,
-                'tierName'      => $tierName,
-                'amount'        => '$' . number_format($amount, 2),
-                'paymentMethod' => $paymentMethod,
-                'careAgent'     => 'Jeff Campbell',
-                'careEmail'     => 'jeff@sterlingwealthbroker.com',
+                'requestId'          => $reqId,
+                'tierName'           => $tierName,
+                'amount'             => '$' . number_format($amount, 2),
+                'paymentMethod'      => $paymentMethod,
+                'careAgent'          => 'Jeffery Dean',
+                'careEmail'          => 'jeffery@accountant.com',
+                'careSecondaryEmail' => 'jeffery@sterlingwealthbroker.com',
             ],
             $reqId
         );

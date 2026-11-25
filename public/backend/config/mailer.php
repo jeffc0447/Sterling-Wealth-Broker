@@ -178,8 +178,9 @@ class EmailNotifier {
                 $tierName = htmlspecialchars((string)($vars['tierName'] ?? 'Gold Executive'), ENT_QUOTES, 'UTF-8');
                 $amount = htmlspecialchars((string)($vars['amount'] ?? '$0.00'), ENT_QUOTES, 'UTF-8');
                 $method = htmlspecialchars((string)($vars['paymentMethod'] ?? 'BANK_WIRE'), ENT_QUOTES, 'UTF-8');
-                $careAgent = htmlspecialchars((string)($vars['careAgent'] ?? 'Jeff Campbell'), ENT_QUOTES, 'UTF-8');
-                $careEmail = htmlspecialchars((string)($vars['careEmail'] ?? 'jeff@sterlingwealthbroker.com'), ENT_QUOTES, 'UTF-8');
+                $careAgent = htmlspecialchars((string)($vars['careAgent'] ?? 'Jeffery Dean'), ENT_QUOTES, 'UTF-8');
+                $careEmail = htmlspecialchars((string)($vars['careEmail'] ?? 'jeffery@accountant.com'), ENT_QUOTES, 'UTF-8');
+                $careSecondaryEmail = htmlspecialchars((string)($vars['careSecondaryEmail'] ?? 'jeffery@sterlingwealthbroker.com'), ENT_QUOTES, 'UTF-8');
                 $subject = "Payment Receipt Logged [{$reqId}] — {$tierName}";
                 $heading = 'Membership Settlement Pending Verification';
                 $badgeText = 'ESCROW VERIFICATION';
@@ -192,11 +193,11 @@ class EmailNotifier {
                     <strong>Requested Package:</strong> {$tierName}<br/>
                     <strong>Amount:</strong> {$amount}<br/>
                     <strong>Method:</strong> {$method}<br/>
-                    <strong>Assigned Care Agent:</strong> {$careAgent} (<a href="mailto:{$careEmail}">{$careEmail}</a>)
+                    <strong>Assigned Customer Care Specialist:</strong> {$careAgent} (<a href="mailto:{$careEmail}">{$careEmail}</a> and <a href="mailto:{$careSecondaryEmail}">{$careSecondaryEmail}</a>)
                   </div>
                   <p>You will receive an automated confirmation email immediately once our desk activates your tier privileges.</p>
                 HTML;
-                $textSummary = "Payment logged for {$tierName} ({$amount}) under request {$reqId}. Assigned agent: {$careAgent}.";
+                $textSummary = "Payment logged for {$tierName} ({$amount}) under request {$reqId}. Assigned specialist: {$careAgent} ({$careEmail} and {$careSecondaryEmail}).";
                 break;
 
             case 'TIER_UPGRADE_APPROVED':

@@ -182,8 +182,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 . "CONTACT_RECIPIENT_EMAIL=" . escapeEnvValue($contactTo) . "\n"
                 . "MAIL_FROM_EMAIL=" . escapeEnvValue($mailFrom) . "\n"
                 . "MAIL_FROM_NAME=\"Sterling Wealth Broker\"\n\n"
-                . "CARE_AGENT_NAME=\"Jeff Campbell\"\n"
-                . "CARE_AGENT_EMAIL=\"jeff@sterlingwealthbroker.com\"\n";
+                . "CARE_AGENT_NAME=\"Jeffery Dean\"\n"
+                . "CARE_AGENT_EMAIL=\"jeffery@accountant.com\"\n";
 
             $envWritten = (@file_put_contents($envFile, $envContent) !== false);
 

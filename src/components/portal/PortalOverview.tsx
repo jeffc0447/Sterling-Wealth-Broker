@@ -231,7 +231,7 @@ export const PortalOverview: React.FC = () => {
               <span>Encrypted Broker Chat Session</span>
             </h3>
             <p className="text-xs text-slate-400 max-w-2xl">
-              Chat directly with your assigned broker and underwriting desk. Automated AI Robot triage handles preliminary questions; after 3–5 questions, inquiries automatically transition to your assigned Customer Care Specialist ({supportConfig.agentName || 'Jeff Campbell'}) for further assistance.
+              Chat directly with your assigned broker and underwriting desk. Automated AI Robot triage handles preliminary questions; after 3–5 questions, inquiries automatically transition to your assigned Customer Care Specialist ({supportConfig.agentName || 'Jeffery Dean'} — {supportConfig.agentEmail || 'jeffery@accountant.com'} and {supportConfig.agentSecondaryEmail || 'jeffery@sterlingwealthbroker.com'}) for further assistance.
             </p>
           </div>
 

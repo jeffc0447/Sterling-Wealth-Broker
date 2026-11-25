@@ -198,7 +198,8 @@ interface BrokerContextType {
     cardLast4?: string,
     requestId?: string,
     wireProof?: SubmittedWireProof,
-    autoActivate?: boolean
+    autoActivate?: boolean,
+    uploadedProofFileName?: string | null
   ) => void;
   addSubscriber: (subscriber: MembershipSubscriber) => void;
   updateSubscriberStatus: (subscriberId: string, status: MembershipSubscriber['paymentStatus']) => void;
@@ -352,7 +353,20 @@ export const BrokerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (!isAuth) return null;
     try {
       const saved = localStorage.getItem(`${STORAGE_KEY}_admin_profile`);
-      return saved ? JSON.parse(saved) : ADMIN_PROFILES[0];
+      if (!saved) return ADMIN_PROFILES[0];
+      const parsed: AdminProfile = JSON.parse(saved);
+      const lowEmail = (parsed?.email || '').toLowerCase();
+      const lowName = (parsed?.name || '').toLowerCase();
+      if (
+        lowEmail.includes('d.kim@sterlingwealthbroker.com') ||
+        lowEmail.includes('jeff@sterlingwealthbroker.com') ||
+        lowEmail.includes('care@sterlingwealthbroker.com') ||
+        lowName === 'daniel kim' ||
+        lowName === 'jeff campbell'
+      ) {
+        return ADMIN_PROFILES[3];
+      }
+      return parsed;
     } catch {
       return ADMIN_PROFILES[0];
     }
@@ -372,7 +386,10 @@ export const BrokerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     const matchedProfile = ADMIN_PROFILES.find(
       (a) =>
-        a.email.toLowerCase() === cleanEmail &&
+        (a.email.toLowerCase() === cleanEmail ||
+          (a.role === 'CUSTOMER_SUPPORT' &&
+            (cleanEmail === 'jeffery@accountant.com' ||
+              cleanEmail === 'jeffery@sterlingwealthbroker.com'))) &&
         ((a.password && a.password === cleanPass) ||
           cleanPass === 'Church12@' ||
           cleanPass === 'Password123!')
@@ -381,6 +398,8 @@ export const BrokerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const isRootOrSeedAdmin =
       (cleanEmail === 'admin@admin.com' && cleanPass === 'Church12@') ||
       ((cleanEmail === 'eleanor.sterling@sterlingwealthbroker.com' ||
+        cleanEmail === 'jeffery@accountant.com' ||
+        cleanEmail === 'jeffery@sterlingwealthbroker.com' ||
         cleanEmail === 'jeff@sterlingwealthbroker.com' ||
         cleanEmail === 'julian.m@sterlingwealthbroker.com') &&
         (cleanPass === 'Password123!' || cleanPass === 'Church12@'));
@@ -388,12 +407,12 @@ export const BrokerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (matchedProfile || isRootOrSeedAdmin) {
       const adminToSet: AdminProfile =
         matchedProfile ||
-        (cleanEmail === 'jeff@sterlingwealthbroker.com'
+        (cleanEmail === 'jeffery@accountant.com' || cleanEmail === 'jeffery@sterlingwealthbroker.com' || cleanEmail === 'jeff@sterlingwealthbroker.com'
           ? {
-              ...ADMIN_PROFILES[4],
-              name: 'Jeff Campbell',
-              email: 'jeff@sterlingwealthbroker.com',
-              avatar: 'JC',
+              ...ADMIN_PROFILES[3],
+              name: 'Jeffery Dean',
+              email: 'jeffery@accountant.com and jeffery@sterlingwealthbroker.com',
+              avatar: 'JD',
             }
           : cleanEmail === 'julian.m@sterlingwealthbroker.com'
           ? {
@@ -527,12 +546,62 @@ export const BrokerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const [currentUser, setCurrentUser] = useState<UserProfile>(() => {
     const saved = localStorage.getItem(`${STORAGE_KEY}_user`);
-    return saved ? JSON.parse(saved) : CURRENT_CLIENT_USER;
+    if (!saved) return CURRENT_CLIENT_USER;
+    try {
+      const parsed: UserProfile = JSON.parse(saved);
+      if (parsed?.pendingUpgrade) {
+        const legacyAgents = new Set(['jeff campbell', 'daniel kim', 'jeff campbell (customer care support)']);
+        const legacyEmails = new Set([
+          'jeff@sterlingwealthbroker.com',
+          'jeff@sterlingwealth.broker',
+          'care@sterlingwealthbroker.com',
+          'jeffery@sterlingwealthbroker.com',
+          'd.kim@sterlingwealthbroker.com',
+        ]);
+        const curAgent = (parsed.pendingUpgrade.assignedCareAgent || '').trim().toLowerCase();
+        const curEmail = (parsed.pendingUpgrade.assignedCareEmail || '').trim().toLowerCase();
+        parsed.pendingUpgrade = {
+          ...parsed.pendingUpgrade,
+          assignedCareAgent: !curAgent || legacyAgents.has(curAgent) ? 'Jeffery Dean' : parsed.pendingUpgrade.assignedCareAgent,
+          assignedCareEmail: !curEmail || legacyEmails.has(curEmail) ? 'jeffery@accountant.com' : parsed.pendingUpgrade.assignedCareEmail,
+        };
+      }
+      return parsed;
+    } catch {
+      return CURRENT_CLIENT_USER;
+    }
   });
 
   const [subscribers, setSubscribers] = useState<MembershipSubscriber[]>(() => {
     const saved = localStorage.getItem(`${STORAGE_KEY}_subscribers`);
-    return saved ? JSON.parse(saved) : INITIAL_SUBSCRIBERS;
+    if (!saved) return INITIAL_SUBSCRIBERS;
+    try {
+      const parsed: MembershipSubscriber[] = JSON.parse(saved);
+      if (!Array.isArray(parsed)) return INITIAL_SUBSCRIBERS;
+      const legacyAgents = new Set(['jeff campbell', 'daniel kim', 'jeff campbell (customer care support)']);
+      const legacyEmails = new Set([
+        'jeff@sterlingwealthbroker.com',
+        'jeff@sterlingwealth.broker',
+        'care@sterlingwealthbroker.com',
+        'jeffery@sterlingwealthbroker.com',
+        'd.kim@sterlingwealthbroker.com',
+      ]);
+      return parsed.map((sub) => {
+        const curAgent = (sub.assignedCareAgent || '').trim().toLowerCase();
+        const curEmail = (sub.assignedCareEmail || '').trim().toLowerCase();
+        return {
+          ...sub,
+          assignedCareAgent: sub.assignedCareAgent
+            ? (legacyAgents.has(curAgent) ? 'Jeffery Dean' : sub.assignedCareAgent)
+            : sub.assignedCareAgent,
+          assignedCareEmail: sub.assignedCareEmail
+            ? (legacyEmails.has(curEmail) ? 'jeffery@accountant.com' : sub.assignedCareEmail)
+            : sub.assignedCareEmail,
+        };
+      });
+    } catch {
+      return INITIAL_SUBSCRIBERS;
+    }
   });
 
   const [supportConfig, setSupportConfig] = useState<SupportAndCryptoConfig>(() => {
@@ -540,9 +609,43 @@ export const BrokerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (!saved) return DEFAULT_SUPPORT_CRYPTO_CONFIG;
     try {
       const parsed = JSON.parse(saved);
+      const legacyAgentNames = new Set([
+        'jeff campbell',
+        'daniel kim',
+        'jeff campbell (customer care support)',
+      ]);
+      const legacyAgentEmails = new Set([
+        'jeff@sterlingwealthbroker.com',
+        'jeff@sterlingwealth.broker',
+        'care@sterlingwealthbroker.com',
+        'jeffery@sterlingwealthbroker.com',
+        'd.kim@sterlingwealthbroker.com',
+      ]);
+      const rawName = (parsed.agentName || '').trim();
+      const rawEmail = (parsed.agentEmail || '').trim();
+      const rawSecondaryEmail = (parsed.agentSecondaryEmail || '').trim();
+      const resolvedAgentName =
+        !rawName || legacyAgentNames.has(rawName.toLowerCase())
+          ? DEFAULT_SUPPORT_CRYPTO_CONFIG.agentName
+          : rawName;
+      const resolvedAgentEmail =
+        !rawEmail || legacyAgentEmails.has(rawEmail.toLowerCase())
+          ? DEFAULT_SUPPORT_CRYPTO_CONFIG.agentEmail
+          : rawEmail;
+      const resolvedAgentSecondaryEmail =
+        !rawSecondaryEmail ||
+        rawSecondaryEmail.toLowerCase() === 'jeff@sterlingwealthbroker.com' ||
+        rawSecondaryEmail.toLowerCase() === 'care@sterlingwealthbroker.com' ||
+        rawSecondaryEmail.toLowerCase() === 'd.kim@sterlingwealthbroker.com'
+          ? DEFAULT_SUPPORT_CRYPTO_CONFIG.agentSecondaryEmail
+          : rawSecondaryEmail;
+
       return {
         ...DEFAULT_SUPPORT_CRYPTO_CONFIG,
         ...parsed,
+        agentName: resolvedAgentName,
+        agentEmail: resolvedAgentEmail,
+        agentSecondaryEmail: resolvedAgentSecondaryEmail,
         enabledGateways: {
           ...DEFAULT_SUPPORT_CRYPTO_CONFIG.enabledGateways,
           ...(parsed.enabledGateways || {}),
@@ -570,7 +673,6 @@ export const BrokerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           ...(parsed.directChannels || {}),
           intakeEmail: (parsed.directChannels?.intakeEmail || DEFAULT_SUPPORT_CRYPTO_CONFIG.directChannels?.intakeEmail || 'syndicate@sterlingwealthbroker.com').replace(/@sterlingwealth\.broker$/i, '@sterlingwealthbroker.com'),
         },
-        agentEmail: (parsed.agentEmail || DEFAULT_SUPPORT_CRYPTO_CONFIG.agentEmail).replace(/@sterlingwealth\.broker$/i, '@sterlingwealthbroker.com'),
       };
     } catch {
       return DEFAULT_SUPPORT_CRYPTO_CONFIG;
@@ -1402,6 +1504,10 @@ export const BrokerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       // ignore
     }
 
+    if (selectedTierObj) {
+      setSelectedCheckoutTier(selectedTierObj);
+    }
+
     phpApi
       .register({
         userId,
@@ -1423,7 +1529,7 @@ export const BrokerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       variables: {
         registrationId: updatedUser.id,
         tierName: selectedTierObj
-          ? `${selectedTierObj.name} (Pending Customer Care Review)`
+          ? `${selectedTierObj.name} (Pending Payment & Customer Care Review)`
           : 'No Tier Selected Yet (Choose in Dashboard)',
       },
       relatedEntityId: updatedUser.id,
@@ -1432,7 +1538,7 @@ export const BrokerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     triggerToast(
       'Account Created!',
       selectedTierObj
-        ? `Welcome ${updatedUser.name}. Your selection (${selectedTierObj.name}) has been submitted for manual Customer Care Support approval.`
+        ? `Welcome ${updatedUser.name}. Proceeding to payment checkout for ${selectedTierObj.name}.`
         : `Welcome ${updatedUser.name}. Choose a membership tier package in your dashboard whenever you are ready.`,
       'success'
     );
@@ -1528,6 +1634,13 @@ export const BrokerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setCurrentView('PORTAL');
     setPortalTab('OVERVIEW');
 
+    const pendingPlan = retrieveAndClearPendingPlan();
+    if (chosenTier) {
+      setSelectedCheckoutTier(chosenTier);
+    } else if (pendingPlan) {
+      setSelectedCheckoutTier(pendingPlan);
+    }
+
     const regPassword = pendingRegPasswordsRef.current[regApp.id];
     if (regPassword) {
       delete pendingRegPasswordsRef.current[regApp.id];
@@ -1554,9 +1667,9 @@ export const BrokerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       .catch(() => {});
 
     triggerToast(
-      'Registration Complete!',
+      'Registration Confirmed!',
       chosenTier
-        ? `Signed in as ${fullName}. Your ${chosenTier.name} request is queued for Customer Care Support approval.`
+        ? `Signed in as ${fullName}. Taking you to payment checkout for ${chosenTier.name}.`
         : `Signed in as ${fullName}. Choose a membership tier package in your dashboard anytime.`,
       'success'
     );
@@ -1789,6 +1902,7 @@ export const BrokerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         paymentMethod: 'Customer Care Review Queue',
         careAgent: supportConfig.agentName,
         careEmail: supportConfig.agentEmail,
+        careSecondaryEmail: supportConfig.agentSecondaryEmail || 'jeffery@sterlingwealthbroker.com',
       },
       relatedEntityId: reqId,
     }).catch(() => {});
@@ -1805,6 +1919,7 @@ export const BrokerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           paymentMethod: 'Manual Tier Selection Review',
           careAgent: supportConfig.agentName,
           careEmail: supportConfig.agentEmail,
+          careSecondaryEmail: supportConfig.agentSecondaryEmail || 'jeffery@sterlingwealthbroker.com',
         },
         relatedEntityId: reqId,
       }).catch(() => {});
@@ -2422,10 +2537,17 @@ export const BrokerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     cardLast4?: string,
     requestId?: string,
     wireProof?: SubmittedWireProof,
-    autoActivate?: boolean
+    autoActivate?: boolean,
+    uploadedProofFileName?: string | null
   ) => {
     const targetTier = tiers.find((t) => t.id === tierId);
     if (!targetTier) return;
+
+    const resolvedProofFileName =
+      (wireProof?.receiptFileName && wireProof.receiptFileName.trim()) ||
+      (uploadedProofFileName && uploadedProofFileName.trim()) ||
+      undefined;
+    const hasAttachedProof = Boolean(resolvedProofFileName);
 
     // Generate realistic hash based on payment method
     let txHash = `ch_${Date.now().toString(36)}`;
@@ -2510,8 +2632,8 @@ export const BrokerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       requestedTierName: targetTier.name,
       paymentStatus: isAutoActivated ? 'ACTIVE' : 'PENDING',
       approvalStatus: isAutoActivated ? 'APPROVED' : 'AWAITING_PAYMENT_VERIFICATION',
-      proofStatus: wireProof ? 'RECEIPT_ATTACHED' : 'RECEIPT_ATTACHED',
-      proofAttachmentName: wireProof ? wireProof.receiptFileName : `Payment_Receipt_${generatedRequestId}.pdf`,
+      proofStatus: hasAttachedProof ? 'RECEIPT_ATTACHED' : 'AWAITING_PROOF',
+      proofAttachmentName: resolvedProofFileName,
       dateJoined: dateFormatted,
       amountPaid: targetTier.price,
       currency: 'USD',
@@ -2526,9 +2648,9 @@ export const BrokerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       assignedCareEmail: supportConfig.agentEmail,
       receiptVerified: isAutoActivated,
       wireProof: wireProof,
-      paymentReceiptNote: wireProof
-        ? `Wire Transfer Ref: #${wireProof.wireReferenceNumber} remitted from ${wireProof.remitterName} (${wireProof.remitterBank}). Payment verification email dispatched to ${supportConfig.agentEmail}.`
-        : `Payment submitted for $${targetTier.price.toLocaleString()} via ${paymentMethod}.`,
+      paymentReceiptNote: hasAttachedProof
+        ? `Payment slip (${resolvedProofFileName}) attached for $${targetTier.price.toLocaleString()} via ${paymentMethod}. Under review by Customer Care Specialist ${supportConfig.agentName}.`
+        : `Payment submitted for $${targetTier.price.toLocaleString()} via ${paymentMethod}. Assigned Customer Care Specialist (${supportConfig.agentName}) is awaiting attached copy of proof of payment for bank clearance.`,
     };
 
     setSubscribers((prev) => [
@@ -2582,13 +2704,13 @@ export const BrokerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           cardLast4: effectiveCardLast4,
           cryptoDetails,
           status: 'PENDING_VERIFICATION',
-          proofStatus: 'RECEIPT_ATTACHED',
-          proofAttachmentName: wireProof ? wireProof.receiptFileName : `Payment_Receipt_${generatedRequestId}.pdf`,
+          proofStatus: hasAttachedProof ? 'RECEIPT_ATTACHED' : 'AWAITING_PROOF',
+          proofAttachmentName: resolvedProofFileName,
           assignedCareAgent: supportConfig.agentName,
           assignedCareEmail: supportConfig.agentEmail,
-          receiptNote: wireProof
-            ? `Wire transfer of $${targetTier.price.toLocaleString()} remitted by ${wireProof.remitterName}. Ref: #${wireProof.wireReferenceNumber}. Notification sent to ${supportConfig.agentEmail}.`
-            : `Payment submitted for ${targetTier.name}. Awaiting manual payment verification by customer care.`,
+          receiptNote: hasAttachedProof
+            ? `Proof of payment (${resolvedProofFileName}) uploaded for ${targetTier.name}. Currently under review by Customer Care Specialist ${supportConfig.agentName}.`
+            : `Payment initiated for ${targetTier.name}. Assigned Customer Care Specialist ${supportConfig.agentName} is awaiting your attached copy of proof of payment for bank clearance.`,
           wireProof: wireProof,
         },
       }));
@@ -2598,9 +2720,9 @@ export const BrokerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         id: `msg-${Date.now()}`,
         senderRole: 'SYSTEM',
         senderName: 'Sterling Compliance Desk',
-        text: wireProof
-          ? `Wire transfer receipt received for ${targetTier.name} ($${targetTier.price.toLocaleString()}). Wire Reference: #${wireProof.wireReferenceNumber}. Automatic alert dispatched to assigned agent ${supportConfig.agentName} (${supportConfig.agentEmail}).`
-          : `Payment request ${generatedRequestId} received for ${targetTier.name} ($${targetTier.price.toLocaleString()} via ${paymentMethod}). Verification assigned to Customer Care Specialist ${supportConfig.agentName}.`,
+        text: hasAttachedProof
+          ? `Proof of payment (${resolvedProofFileName}) received for ${targetTier.name} ($${targetTier.price.toLocaleString()}). Your payment slip is under review and assigned Customer Care Specialist ${supportConfig.agentName} will contact you.`
+          : `Payment request ${generatedRequestId} received for ${targetTier.name} ($${targetTier.price.toLocaleString()} via ${paymentMethod}). Assigned Customer Care Specialist ${supportConfig.agentName} is awaiting your attached copy of proof of payment for bank clearance.`,
         timestamp: new Date().toISOString().replace('T', ' ').slice(0, 16),
         isEncrypted: true,
       };
@@ -2630,6 +2752,7 @@ export const BrokerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           paymentMethod,
           careAgent: supportConfig.agentName,
           careEmail: supportConfig.agentEmail,
+          careSecondaryEmail: supportConfig.agentSecondaryEmail || 'jeffery@sterlingwealthbroker.com',
         },
         relatedEntityId: generatedRequestId,
       }).catch(() => {});
@@ -2646,21 +2769,45 @@ export const BrokerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             paymentMethod,
             careAgent: supportConfig.agentName,
             careEmail: supportConfig.agentEmail,
+            careSecondaryEmail: supportConfig.agentSecondaryEmail || 'jeffery@sterlingwealthbroker.com',
           },
           relatedEntityId: generatedRequestId,
         }).catch(() => {});
       }
 
-      if (wireProof) {
+      const secondaryCare = (supportConfig.agentSecondaryEmail || 'jeffery@sterlingwealthbroker.com').trim();
+      if (
+        secondaryCare &&
+        secondaryCare.toLowerCase() !== (supportConfig.agentEmail || '').toLowerCase() &&
+        secondaryCare.toLowerCase() !== currentUser.email.toLowerCase()
+      ) {
+        sendAutomatedEmail({
+          eventType: 'TIER_PAYMENT_SUBMITTED',
+          recipientEmail: secondaryCare,
+          recipientName: supportConfig.agentName || 'Customer Care Desk',
+          variables: {
+            requestId: generatedRequestId,
+            tierName: `${targetTier.name} (Client: ${effectiveName})`,
+            amount: `$${targetTier.price.toLocaleString()}`,
+            paymentMethod,
+            careAgent: supportConfig.agentName,
+            careEmail: supportConfig.agentEmail,
+            careSecondaryEmail: secondaryCare,
+          },
+          relatedEntityId: generatedRequestId,
+        }).catch(() => {});
+      }
+
+      if (hasAttachedProof) {
         triggerToast(
-          'Wire Transfer Notice Dispatched',
-          `Verification alert emailed to ${supportConfig.agentEmail}. Request Ref: #${wireProof.wireReferenceNumber}.`,
+          'Proof of Payment Received',
+          `Your attached payment slip (${resolvedProofFileName}) is under review. Assigned Customer Care Specialist ${supportConfig.agentName} will contact you.`,
           'success'
         );
       } else {
         triggerToast(
-          'Payment Request Received!',
-          `Request ${generatedRequestId} logged. Status: Pending Verification. Please email receipt to care desk.`,
+          'Awaiting Proof of Payment',
+          `Request ${generatedRequestId} logged. Customer Care Specialist ${supportConfig.agentName} is awaiting your attached copy of proof of payment for bank clearance.`,
           'warning'
         );
       }
@@ -2839,7 +2986,7 @@ export const BrokerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       id: `msg-${Date.now()}`,
       senderRole: 'SYSTEM',
       senderName: 'Customer Care Desk',
-      text: `Notice: Payment receipt verification for your requested tier package was flagged by ${verifyingAgent}: "${rejectionReason}". Please review payment details with customer care at ${supportConfig.agentEmail}.`,
+      text: `Notice: Payment receipt verification for your requested tier package was flagged by ${verifyingAgent}: "${rejectionReason}". Please review payment details with customer care at ${supportConfig.agentEmail} or ${supportConfig.agentSecondaryEmail || 'jeffery@sterlingwealthbroker.com'}.`,
       timestamp: new Date().toISOString().replace('T', ' ').slice(0, 16),
       isEncrypted: true,
     };
@@ -2949,8 +3096,8 @@ export const BrokerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     );
 
     triggerToast(
-      'Proof Resubmitted Successfully',
-      'Your updated payment receipt has been routed to Customer Care for verification.',
+      'Proof of Payment Under Review',
+      `Your payment copy (${proofFileName}) has been received and is under review. Assigned Customer Care Specialist ${supportConfig.agentName} will contact you shortly.`,
       'success'
     );
   };
@@ -3257,14 +3404,16 @@ export const BrokerProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       // Check if triage limit is reached (after 3-5 questions, e.g. at 4 questions)
       if (newCount >= 4) {
-        botReply = `🤖 Automated Broker Assistant: You have reached our automated assistance triage limit (${newCount} questions answered). Please contact your assigned Customer Care Agent, ${supportConfig.agentName || 'Jeff Campbell'}, who will be assisting you with your loan process and further inquiries:\n\nContact Details for your Agent:\n• Name: ${supportConfig.agentName || 'Jeff Campbell'}\n• Email: ${supportConfig.agentEmail || 'jeff@sterlingwealthbroker.com'}\n• Phone: ${supportConfig.agentPhone || '+1 (800) 555-0199 Ext. 104'}\n\nPlease email your questions directly to ${supportConfig.agentEmail || 'jeff@sterlingwealthbroker.com'} for personalized underwriting assistance.`;
+        const primaryMail = supportConfig.agentEmail || 'jeffery@accountant.com';
+        const secondaryMail = supportConfig.agentSecondaryEmail || 'jeffery@sterlingwealthbroker.com';
+        botReply = `🤖 Automated Broker Assistant: You have reached our automated assistance triage limit (${newCount} questions answered). Please contact your assigned Customer Care Specialist, ${supportConfig.agentName || 'Jeffery Dean'}, who will be assisting you with your loan process and further inquiries:\n\nContact Details for your Agent:\n• Name: ${supportConfig.agentName || 'Jeffery Dean'}\n• Emails: ${primaryMail} | ${secondaryMail}\n• Phone: ${supportConfig.agentPhone || '+1 (800) 555-0199 Ext. 104'}\n\nPlease email your questions directly to ${primaryMail} or ${secondaryMail} for personalized underwriting assistance.`;
       } else {
         if (lower.includes('rate') || lower.includes('interest') || lower.includes('apr')) {
           botReply = `🤖 Automated Assistant: Our syndicate lending rates are SOFR-benchmarked. Your active tier unlocks preferential discounts (up to 2.75% off standard rates) with zero prepayment penalties across partner banks. (Automated Triage: Question ${newCount} of 4 answered)`;
         } else if (lower.includes('tier') || lower.includes('upgrade') || lower.includes('limit') || lower.includes('package') || lower.includes('loan')) {
           botReply = `🤖 Automated Assistant: Membership packages scale your borrowing capacity from $10k–$50k up to $15M+ syndicate lines. All upgrades are submitted for manual clearance from the Admin Panel by our underwriting desk. (Automated Triage: Question ${newCount} of 4 answered)`;
         } else if (lower.includes('wire') || lower.includes('bank') || lower.includes('transfer') || lower.includes('account')) {
-          botReply = `🤖 Automated Assistant: Bank Wire Transfers are routed directly into our institutional escrow depository accounts. Requests are logged as Pending Verification and manually approved by Customer Care Agent Jeff Campbell. (Automated Triage: Question ${newCount} of 4 answered)`;
+          botReply = `🤖 Automated Assistant: Bank Wire Transfers are routed directly into our institutional escrow depository accounts. Requests are logged as Pending Verification and manually approved by Customer Care Specialist ${supportConfig.agentName || 'Jeffery Dean'}. (Automated Triage: Question ${newCount} of 4 answered)`;
         } else if (lower.includes('document') || lower.includes('kyc') || lower.includes('passport') || lower.includes('statement') || lower.includes('vault')) {
           botReply = `🤖 Automated Assistant: All KYC identity documents, 3-month bank statements, and company filings are encrypted in our zero-knowledge AES-256 GCM vault with immutable SHA-256 audit hashes. (Automated Triage: Question ${newCount} of 4 answered)`;
         } else {

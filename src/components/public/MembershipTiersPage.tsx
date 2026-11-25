@@ -223,7 +223,7 @@ export const MembershipTiersPage: React.FC = () => {
               <div>
                 <h4 className="font-bold text-white text-sm">Bank Wire Escrow</h4>
                 <p className="text-xs text-slate-400 mt-1 leading-relaxed">
-                  Fedwire, ACH, and SWIFT RTGS coordinates provided directly by assigned Customer Care Agent Jeff Campbell with receipt audit slip upload.
+                  Fedwire, ACH, and SWIFT RTGS coordinates provided directly by assigned Customer Care Specialist Jeffery Dean with receipt audit slip upload.
                 </p>
               </div>
               <ul className="text-[11px] text-slate-300 space-y-1 font-mono pt-1">

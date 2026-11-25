@@ -53,7 +53,7 @@ export const FaqPage: React.FC = () => {
       categoryLabel: 'Payments & Settlement',
       question: 'What payment gateways and settlement options are accepted for membership packages?',
       answer:
-        'We support three institutional settlement methods: 1) Credit Card (Stripe / Authorize.net) with real-time Address Verification System (AVS); 2) Cryptocurrency (BTC, ETH, USDC, USDT, SOL) routed to cold-storage treasury wallets configured manually by our administration; and 3) Bank Wire Transfer (Fedwire / SWIFT) with payment receipt verification. For Bank Wire transfers, you are assigned a dedicated Customer Care Agent (Jeff Campbell) who coordinates updated banking coordinates.',
+        'We support three institutional settlement methods: 1) Credit Card (Stripe / Authorize.net) with real-time Address Verification System (AVS); 2) Cryptocurrency (BTC, ETH, USDC, USDT, SOL) routed to cold-storage treasury wallets configured manually by our administration; and 3) Bank Wire Transfer (Fedwire / SWIFT) with payment receipt verification. For payment settlements, you are assigned a dedicated Customer Care Specialist (Jeffery Dean — jeffery@accountant.com and jeffery@sterlingwealthbroker.com) who coordinates verification and clearance.',
     },
     {
       id: 'faq-4',
@@ -85,7 +85,7 @@ export const FaqPage: React.FC = () => {
       categoryLabel: 'Payments & Settlement',
       question: 'How does Bank Wire Transfer verification work, and who is my assigned care agent?',
       answer:
-        'When you select Bank Wire Transfer at checkout, our system automatically routes your transaction details to your assigned Customer Care Agent, Jeff Campbell (jeff@sterlingwealthbroker.com). You will receive updated escrow coordinates, and you can upload your wire confirmation receipt or reference number directly in your Client Portal for priority underwriting clearance.',
+        'When you select a payment gateway at checkout, our system automatically routes your transaction details to your assigned Customer Care Specialist, Jeffery Dean (jeffery@accountant.com and jeffery@sterlingwealthbroker.com). You will receive updated escrow coordinates, and you can upload your payment confirmation slip or reference number directly at checkout or in your Client Portal for priority underwriting clearance.',
     },
     {
       id: 'faq-8',

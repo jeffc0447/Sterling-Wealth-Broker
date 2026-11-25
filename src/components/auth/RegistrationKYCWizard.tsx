@@ -538,17 +538,9 @@ export const RegistrationKYCWizard: React.FC<RegistrationKYCWizardProps> = ({
 
       {/* Membership Tier Package Choice (Optional) */}
       <div className="pt-2 border-t border-slate-800/80 space-y-2.5">
-        <div className="flex items-center justify-between gap-2">
-          <label className="block text-xs font-semibold text-white">
-            Membership Tier Package (Optional)
-          </label>
-          <span className="text-[10px] font-mono uppercase tracking-wider text-amber-400">
-            Manual Care Approval Required
-          </span>
-        </div>
-        <p className="text-[11px] text-slate-400 leading-relaxed">
-          No tier is assigned automatically. Select a package now or choose later after signing up — all membership packages are manually reviewed and approved by Customer Care Support in the Admin Panel.
-        </p>
+        <label className="block text-xs font-semibold text-white">
+          Membership Tier Package (Optional)
+        </label>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           <button
@@ -587,7 +579,7 @@ export const RegistrationKYCWizard: React.FC<RegistrationKYCWizardProps> = ({
                 </span>
               </div>
               <span className="text-[10px] text-slate-400 block mt-0.5">
-                Limit up to ${tier.maxLoanLimit.toLocaleString()} · Pending Care Review
+                Limit up to ${tier.maxLoanLimit.toLocaleString()}
               </span>
             </button>
           ))}

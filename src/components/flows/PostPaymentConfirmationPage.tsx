@@ -41,19 +41,20 @@ export const PostPaymentConfirmationPage: React.FC = () => {
   const tierName = pending?.requestedTierName || targetTier.name;
   const amount = pending?.requestedAmount || targetTier.price;
   const requestedDate = pending?.requestedAt || 'October 28, 2026 · 14:32';
-  const careEmail = supportConfig.agentEmail || 'care@sterlingwealthbroker.com';
-  const careAgent = supportConfig.agentName || 'Daniel Kim';
+  const careEmail = supportConfig.agentEmail || 'jeffery@accountant.com';
+  const careSecondaryEmail = supportConfig.agentSecondaryEmail || 'jeffery@sterlingwealthbroker.com';
+  const careAgent = supportConfig.agentName || 'Jeffery Dean';
 
   const mailtoSubject = encodeURIComponent(`[Payment Proof] ${requestId} - ${tierName} Upgrade`);
   const mailtoBody = encodeURIComponent(
     `Hello ${careAgent} & Sterling Customer Care Team,\n\nPlease find attached the payment receipt/transaction proof for my membership upgrade request:\n\n- Request ID: ${requestId}\n- Client Name: ${currentUser.name}\n- Account Email: ${currentUser.email}\n- Upgraded Tier: ${tierName}\n- Amount: $${amount.toLocaleString()} USD\n\nThank you for verifying and expediting my underwriting vault access.\n\nSincerely,\n${currentUser.name}`
   );
-  const mailtoHref = `mailto:${careEmail}?subject=${mailtoSubject}&body=${mailtoBody}`;
+  const mailtoHref = `mailto:${careEmail},${careSecondaryEmail}?subject=${mailtoSubject}&body=${mailtoBody}`;
 
   const handleCopyEmail = () => {
-    navigator.clipboard.writeText(careEmail);
+    navigator.clipboard.writeText(`${careEmail}, ${careSecondaryEmail}`);
     setHasCopiedEmail(true);
-    triggerToast('Email Copied to Clipboard', careEmail, 'success');
+    triggerToast('Emails Copied to Clipboard', `${careEmail} and ${careSecondaryEmail}`, 'success');
     setTimeout(() => setHasCopiedEmail(false), 2500);
   };
 
@@ -192,30 +193,42 @@ export const PostPaymentConfirmationPage: React.FC = () => {
             <div className="space-y-4 flex-1">
               <div>
                 <span className="text-[11px] font-mono uppercase tracking-widest text-amber-400 font-semibold block mb-1">
-                  Required Action · Step 2 of 2
+                  {pending?.proofStatus === 'RECEIPT_ATTACHED' || uploadedFileName || pending?.proofAttachmentName
+                    ? 'Proof of Payment Uploaded · Under Review'
+                    : 'Action Required · Step 2 of 2'}
                 </span>
                 <h3 id="instruction-heading" className="text-lg sm:text-xl font-bold text-white tracking-tight">
-                  Email Your Payment Receipt to Activate Your Upgrade
+                  {pending?.proofStatus === 'RECEIPT_ATTACHED' || uploadedFileName || pending?.proofAttachmentName
+                    ? 'Proof of Payment Under Review'
+                    : 'Attach a Copy of Your Payment Slip for Review'}
                 </h3>
                 <p className="text-xs sm:text-sm text-slate-300 mt-1.5 leading-relaxed">
-                  Under bank clearing protocols and escrow compliance, membership tier perks unlock once payment receipt is manually verified. Please email your receipt copy, bank wire slip, or transaction reference to our customer care desk at:
+                  {pending?.proofStatus === 'RECEIPT_ATTACHED' || uploadedFileName || pending?.proofAttachmentName
+                    ? `We have received your proof of payment (${uploadedFileName || pending?.proofAttachmentName}). Your payment slip is currently under review for bank clearance, and your assigned Customer Care Specialist (${careAgent}) will contact you shortly.`
+                    : `Your assigned Customer Care Specialist (${careAgent}) is awaiting your attached copy of proof of payment for bank clearance. Attach your payment slip below or email it directly to:`}
                 </p>
               </div>
 
               {/* Email Address Highlight & Action Buttons */}
               <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div className="flex items-center gap-2 min-w-0">
-                  <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping shrink-0" />
-                  <span className="font-mono text-sm sm:text-base font-semibold text-white truncate">
-                    {careEmail}
-                  </span>
+                <div className="space-y-1 min-w-0">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0">
+                    <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping shrink-0" />
+                    <a href={`mailto:${careEmail}`} className="font-mono text-xs sm:text-sm font-semibold text-white hover:text-emerald-400 transition-colors">
+                      {careEmail}
+                    </a>
+                    <span className="text-slate-400 text-xs">and</span>
+                    <a href={`mailto:${careSecondaryEmail}`} className="font-mono text-xs sm:text-sm font-semibold text-white hover:text-emerald-400 transition-colors">
+                      {careSecondaryEmail}
+                    </a>
+                  </div>
                 </div>
 
                 <div className="flex items-center gap-2 shrink-0">
                   {/* One-click "Copy Email Address" button */}
                   <button
                     onClick={handleCopyEmail}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 transition-colors shadow-sm"
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 transition-colors shadow-sm cursor-pointer"
                   >
                     {hasCopiedEmail ? (
                       <>
@@ -225,7 +238,7 @@ export const PostPaymentConfirmationPage: React.FC = () => {
                     ) : (
                       <>
                         <Copy className="w-3.5 h-3.5" />
-                        <span>Copy Email Address</span>
+                        <span>Copy Emails</span>
                       </>
                     )}
                   </button>
@@ -248,7 +261,7 @@ export const PostPaymentConfirmationPage: React.FC = () => {
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <div className="flex items-center gap-2 text-xs text-slate-300">
                     <Paperclip className="w-4 h-4 text-emerald-400" />
-                    <span>Or attach payment proof directly for instant review:</span>
+                    <span>Attach a copy of your payment slip for review:</span>
                   </div>
 
                   <label className="cursor-pointer inline-flex items-center gap-1.5 text-xs text-emerald-400 hover:text-emerald-300 font-medium">
@@ -270,7 +283,7 @@ export const PostPaymentConfirmationPage: React.FC = () => {
                       Attached: {uploadedFileName || pending?.proofAttachmentName}
                     </span>
                     <span className="text-[11px] text-emerald-400 font-sans font-medium">
-                      ✓ Uploaded to Underwriting Desk
+                      ✓ Under Review · Specialist Will Contact You
                     </span>
                   </div>
                 )}

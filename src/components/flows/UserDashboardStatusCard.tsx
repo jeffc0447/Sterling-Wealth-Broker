@@ -45,7 +45,8 @@ export const UserDashboardStatusCard: React.FC = () => {
   } = useBroker();
 
   const [isResubmitModalOpen, setIsResubmitModalOpen] = useState(false);
-  const [resubmitFileName, setResubmitFileName] = useState('Updated_Wire_Receipt.pdf');
+  const [resubmitFileName, setResubmitFileName] = useState('');
+  const [resubmitFileError, setResubmitFileError] = useState<string | null>(null);
   const [resubmitUserNote, setResubmitUserNote] = useState('');
   const [isSubmittingProof, setIsSubmittingProof] = useState(false);
   const [isTierUpgradeSelectorOpen, setIsTierUpgradeSelectorOpen] = useState(false);
@@ -135,18 +136,49 @@ export const UserDashboardStatusCard: React.FC = () => {
   const isUnassigned = !activeTier && !isPending && !isDeclined;
   const isApproved = Boolean(activeTier) && !isPending && !isDeclined;
 
+  const uploadedProofName =
+    (pending?.proofAttachmentName && pending.proofAttachmentName.trim()) ||
+    (pending?.wireProof?.receiptFileName && pending.wireProof.receiptFileName.trim()) ||
+    '';
+  const hasUploadedProof =
+    pending?.proofStatus === 'RECEIPT_ATTACHED' ||
+    pending?.proofStatus === 'EMAILED_TO_CARE' ||
+    Boolean(uploadedProofName);
+
+  const handleResubmitFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setResubmitFileError(null);
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) {
+      setResubmitFileError('File size exceeds the 10MB maximum limit.');
+      return;
+    }
+    const allowedExtensions = ['.pdf', '.png', '.jpg', '.jpeg'];
+    const lowerName = file.name.toLowerCase();
+    if (!allowedExtensions.some((ext) => lowerName.endsWith(ext))) {
+      setResubmitFileError('Invalid file format. Upload a PDF, PNG, or JPG payment slip.');
+      return;
+    }
+    setResubmitFileName(file.name);
+  };
+
   const handleResubmitSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!resubmitFileName.trim()) {
+      setResubmitFileError('Please select a copy of your payment slip to upload.');
+      return;
+    }
     setIsSubmittingProof(true);
     setTimeout(() => {
       resubmitClientProof(
         resubmitFileName,
-        resubmitUserNote || 'Client re-submitted official banking receipt copy.'
+        resubmitUserNote || 'Client attached official proof of payment copy for bank clearance review.'
       );
       setIsSubmittingProof(false);
       setIsResubmitModalOpen(false);
       setResubmitUserNote('');
-    }, 800);
+      setResubmitFileName('');
+    }, 600);
   };
 
   const handleSimulateNewRequest = (tierId: MembershipTierId) => {
@@ -157,11 +189,13 @@ export const UserDashboardStatusCard: React.FC = () => {
     }
   };
 
-  const careEmail = supportConfig.agentEmail || 'care@sterlingwealthbroker.com';
+  const careAgent = supportConfig.agentName || 'Jeffery Dean';
+  const careEmail = supportConfig.agentEmail || 'jeffery@accountant.com';
+  const careSecondaryEmail = supportConfig.agentSecondaryEmail || 'jeffery@sterlingwealthbroker.com';
   const mailtoSubject = encodeURIComponent(
     `[Inquiry] Membership Upgrade Verification - ${currentUser.name}`
   );
-  const mailtoHref = `mailto:${careEmail}?subject=${mailtoSubject}`;
+  const mailtoHref = `mailto:${careEmail},${careSecondaryEmail}?subject=${mailtoSubject}`;
 
   return (
     <div className="space-y-4">
@@ -306,13 +340,27 @@ export const UserDashboardStatusCard: React.FC = () => {
                   </div>
                   <div>
                     <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-mono uppercase tracking-wider font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 mb-1">
-                      🟡 Pending Manual Verification
+                      {hasUploadedProof ? 'Proof Uploaded · Under Review' : 'Awaiting Proof of Payment'}
                     </div>
                     <h3 className="text-base sm:text-lg font-bold text-white tracking-tight">
-                      Verification in progress. Features will unlock once approved.
+                      {hasUploadedProof
+                        ? 'Proof of payment received and currently under review.'
+                        : 'Assigned Customer Care Specialist is awaiting your proof of payment.'}
                     </h3>
                     <p className="text-xs text-slate-300 mt-1 leading-relaxed">
-                      Your upgrade request for <strong className="text-white">{pending?.requestedTierName}</strong> (${pending?.requestedAmount?.toLocaleString()} USD) has been received. Our customer care desk is reviewing your payment proof against bank clearance.
+                      {hasUploadedProof ? (
+                        <>
+                          Thank you — we have received your attached payment copy{' '}
+                          {uploadedProofName ? (
+                            <strong className="text-emerald-300 font-mono">({uploadedProofName})</strong>
+                          ) : null}{' '}
+                          for <strong className="text-white">{pending?.requestedTierName}</strong> (${pending?.requestedAmount?.toLocaleString()} USD). It is currently under review for bank clearance, and your assigned Customer Care Specialist (<strong className="text-white">{supportConfig.agentName}</strong>) will contact you shortly.
+                        </>
+                      ) : (
+                        <>
+                          Your request for <strong className="text-white">{pending?.requestedTierName}</strong> (${pending?.requestedAmount?.toLocaleString()} USD) is logged, but no payment copy has been uploaded yet. Your assigned Customer Care Specialist (<strong className="text-white">{supportConfig.agentName}</strong>) is awaiting your attached copy of proof of payment for bank clearance.
+                        </>
+                      )}
                     </p>
                   </div>
                 </div>
@@ -327,19 +375,69 @@ export const UserDashboardStatusCard: React.FC = () => {
                 </div>
               </div>
 
+              {/* Explicit Proof-of-Payment Notification Callout */}
+              {!hasUploadedProof ? (
+                <div className="bg-amber-950/50 border border-amber-500/40 rounded-lg p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                  <div className="flex items-start gap-2.5">
+                    <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                    <div className="space-y-0.5">
+                      <div className="font-semibold text-white">
+                        Action Required: Attach Copy of Proof of Payment
+                      </div>
+                      <p className="text-amber-200/90 leading-relaxed">
+                        Assigned Customer Care Specialist <strong className="text-white">{supportConfig.agentName}</strong> is awaiting your attached copy of proof of payment for bank clearance.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setResubmitFileError(null);
+                      setIsResubmitModalOpen(true);
+                    }}
+                    className="min-h-[40px] inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-amber-500 hover:bg-amber-400 text-slate-950 transition-all shadow-sm cursor-pointer shrink-0"
+                  >
+                    <UploadCloud className="w-3.5 h-3.5" />
+                    <span>Attach Copy of Payment Slip</span>
+                  </button>
+                </div>
+              ) : (
+                <div className="bg-emerald-950/35 border border-emerald-500/40 rounded-lg p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                  <div className="flex items-start gap-2.5">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                    <div className="space-y-0.5">
+                      <div className="font-semibold text-emerald-300">
+                        Proof of Payment Acknowledged · Under Bank Clearance Review
+                      </div>
+                      <p className="text-slate-300 leading-relaxed">
+                        Your payment copy{uploadedProofName ? ` (${uploadedProofName})` : ''} has been acknowledged and is under review. Assigned Customer Care Specialist <strong className="text-white">{supportConfig.agentName}</strong> will contact you.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Progress & Next Step helper */}
               <div className="bg-slate-950/80 border border-slate-800 rounded-lg p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
                 <div className="space-y-1">
-                  <div className="flex items-center gap-2 text-slate-300">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-slate-300">
                     <span className="text-slate-400">Assigned Customer Care Specialist:</span>
-                    <span className="font-semibold text-white">{supportConfig.agentName}</span>
+                    <span className="font-semibold text-white">{careAgent}</span>
                     <span className="text-slate-600">·</span>
-                    <span className="font-mono text-amber-400">{supportConfig.agentEmail}</span>
+                    <a href={`mailto:${careEmail}`} className="font-mono text-amber-400 hover:underline">
+                      {careEmail}
+                    </a>
+                    <span className="text-slate-500">and</span>
+                    <a href={`mailto:${careSecondaryEmail}`} className="font-mono text-amber-400 hover:underline">
+                      {careSecondaryEmail}
+                    </a>
                   </div>
                   <div className="text-[11px] text-slate-400">
-                    Estimated verification turnaround: <strong>12–24 hours</strong>. Receipt status:{' '}
-                    <span className="text-emerald-400 font-medium">
-                      {pending?.proofStatus === 'RECEIPT_ATTACHED' ? 'Receipt Proof Attached' : 'Awaiting Proof'}
+                    Estimated verification turnaround: <strong>12–24 hours</strong> · Receipt status:{' '}
+                    <span className={hasUploadedProof ? 'text-emerald-400 font-medium' : 'text-amber-400 font-medium'}>
+                      {hasUploadedProof
+                        ? `Uploaded (${uploadedProofName || 'On File'}) · Under Review`
+                        : 'Awaiting Proof of Payment'}
                     </span>
                   </div>
                 </div>
@@ -356,11 +454,14 @@ export const UserDashboardStatusCard: React.FC = () => {
                   </a>
                   <button
                     type="button"
-                    onClick={() => setIsResubmitModalOpen(true)}
+                    onClick={() => {
+                      setResubmitFileError(null);
+                      setIsResubmitModalOpen(true);
+                    }}
                     className="min-h-[40px] inline-flex items-center gap-1 px-3.5 py-2 rounded-xl text-xs font-semibold bg-amber-500 hover:bg-amber-400 active:scale-95 text-slate-950 transition-all shadow-sm cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400"
                   >
                     <UploadCloud className="w-3.5 h-3.5" />
-                    <span>Attach Updated Proof</span>
+                    <span>{hasUploadedProof ? 'Attach Updated Proof' : 'Upload Payment Slip'}</span>
                   </button>
                 </div>
               </div>
@@ -748,6 +849,62 @@ export const UserDashboardStatusCard: React.FC = () => {
           )}
         </div>
 
+        {/* Always-Visible Assigned Customer Care Specialist Contact Bar on User Dashboard */}
+        <div className="mt-5 pt-5 border-t border-slate-800/80">
+          <div className="bg-slate-950/80 border border-amber-500/30 rounded-xl p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div className="flex items-start sm:items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-500/15 border border-amber-500/40 text-amber-300 font-bold flex items-center justify-center text-xs shrink-0">
+                {careAgent.split(' ').map((n) => n[0]).join('').slice(0, 2) || 'JD'}
+              </div>
+              <div className="space-y-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-[10px] font-mono uppercase tracking-wider text-amber-400 font-semibold">
+                    Assigned Customer Care Specialist
+                  </span>
+                  <span className="text-slate-600">·</span>
+                  <span className="text-xs font-semibold text-white">{careAgent}</span>
+                </div>
+                <div className="text-xs font-mono flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <a href={`mailto:${careEmail}`} className="text-emerald-400 hover:underline font-medium">
+                    {careEmail}
+                  </a>
+                  <span className="text-slate-500 font-sans">and</span>
+                  <a href={`mailto:${careSecondaryEmail}`} className="text-emerald-400 hover:underline font-medium">
+                    {careSecondaryEmail}
+                  </a>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  try {
+                    navigator.clipboard.writeText(`${careEmail}, ${careSecondaryEmail}`);
+                    triggerToast('Emails Copied', `${careEmail} and ${careSecondaryEmail} copied to clipboard.`, 'success');
+                  } catch {
+                    // ignore
+                  }
+                }}
+                className="min-h-[38px] inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition cursor-pointer"
+              >
+                <Copy className="w-3.5 h-3.5 text-slate-400" />
+                <span>Copy Emails</span>
+              </button>
+              <a
+                href={mailtoHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="min-h-[38px] inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-amber-500 hover:bg-amber-400 text-slate-950 transition shadow-sm"
+              >
+                <Mail className="w-3.5 h-3.5" />
+                <span>Contact Specialist</span>
+              </a>
+            </div>
+          </div>
+        </div>
+
       </div>
 
       {/* Resubmit Proof Modal */}
@@ -758,7 +915,7 @@ export const UserDashboardStatusCard: React.FC = () => {
               <div className="flex items-center gap-2">
                 <UploadCloud className="w-5 h-5 text-emerald-400" />
                 <h3 className="font-semibold text-white text-base">
-                  Resubmit Proof of Payment
+                  {hasUploadedProof ? 'Update Proof of Payment' : 'Attach Copy of Proof of Payment'}
                 </h3>
               </div>
               <button
@@ -782,16 +939,21 @@ export const UserDashboardStatusCard: React.FC = () => {
                     accept=".pdf,.png,.jpg,.jpeg"
                     className="hidden"
                     id="resubmit-file"
-                    onChange={(e) => {
-                      if (e.target.files?.[0]) setResubmitFileName(e.target.files[0].name);
-                    }}
+                    onChange={handleResubmitFileSelect}
                   />
                   <label htmlFor="resubmit-file" className="cursor-pointer block space-y-1">
                     <FileText className="w-8 h-8 text-emerald-400 mx-auto" />
-                    <span className="block text-white font-medium">{resubmitFileName}</span>
-                    <span className="block text-[11px] text-slate-400">Click to choose a different PDF or image file</span>
+                    <span className="block text-white font-medium">
+                      {resubmitFileName || 'Click to choose your payment slip (PDF, PNG, or JPG)'}
+                    </span>
+                    <span className="block text-[11px] text-slate-400">
+                      Attach a copy of your payment slip for bank clearance review (Max 10MB)
+                    </span>
                   </label>
                 </div>
+                {resubmitFileError && (
+                  <p className="text-[11px] text-rose-400 mt-1.5">{resubmitFileError}</p>
+                )}
               </div>
 
               <div>

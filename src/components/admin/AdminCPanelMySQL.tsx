@@ -61,8 +61,9 @@ MAIL_FROM_EMAIL="noreply@investproasset.com"
 MAIL_FROM_NAME="Sterling Wealth Broker"
 
 # Institutional Customer Care Defaults
-CARE_AGENT_NAME="Jeff Campbell"
-CARE_AGENT_EMAIL="jeff@sterlingwealthbroker.com"`;
+CARE_AGENT_NAME="Jeffery Dean"
+CARE_AGENT_EMAIL="jeffery@accountant.com"
+CARE_AGENT_SECONDARY_EMAIL="jeffery@sterlingwealthbroker.com"`;
 
   const handleCopyEnv = () => {
     navigator.clipboard.writeText(envTemplateContent);
@@ -227,7 +228,7 @@ defined('DB_SOCKET') || define('DB_SOCKET', (string)envValue('DB_SOCKET', ''));`
 // Records client questions in broker_messages table.
 // Automated concierge answers up to 3 questions.
 // After 4 questions, automatically directs user to:
-// Jeff Campbell (jeff@sterlingwealthbroker.com | +1 800 842-9912)`,
+// Jeffery Dean (jeffery@accountant.com and jeffery@sterlingwealthbroker.com | +1 800 842-9912)`,
     },
     'setup_check.php': {
       desc: 'Diagnostic endpoint to verify PHP version, PDO MySQL driver, and database tables.',

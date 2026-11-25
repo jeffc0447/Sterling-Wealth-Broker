@@ -108,8 +108,9 @@ export const buildEmailTemplate = (
       const tierName = escapeHtml(vars.tierName || 'Gold Executive');
       const amount = escapeHtml(vars.amount || '$0.00');
       const method = escapeHtml(vars.paymentMethod || 'BANK_WIRE');
-      const careAgent = escapeHtml(vars.careAgent || 'Jeff Campbell');
-      const careEmail = escapeHtml(vars.careEmail || 'jeff@sterlingwealthbroker.com');
+      const careAgent = escapeHtml(vars.careAgent || 'Jeffery Dean');
+      const careEmail = escapeHtml(vars.careEmail || 'jeffery@accountant.com');
+      const careSecondaryEmail = escapeHtml(vars.careSecondaryEmail || 'jeffery@sterlingwealthbroker.com');
       subject = `Payment Receipt Logged [${vars.requestId || 'PENDING'}] — ${vars.tierName || 'Tier'}`;
       heading = 'Membership Settlement Pending Verification';
       badge = 'ESCROW VERIFICATION';
@@ -121,10 +122,10 @@ export const buildEmailTemplate = (
           <strong>Request ID:</strong> ${reqId}<br/>
           <strong>Package:</strong> ${tierName}<br/>
           <strong>Amount:</strong> ${amount}<br/>
-          <strong>Assigned Care Agent:</strong> ${careAgent} (${careEmail})
+          <strong>Assigned Customer Care Specialist:</strong> ${careAgent} (${careEmail} / ${careSecondaryEmail})
         </div>
       `;
-      bodyText = `Payment receipt logged (${vars.requestId || ''}) for ${vars.tierName || ''} (${vars.amount || ''}).`;
+      bodyText = `Payment receipt logged (${vars.requestId || ''}) for ${vars.tierName || ''} (${vars.amount || ''}). Specialist: ${vars.careAgent || 'Jeffery Dean'} (${vars.careEmail || 'jeffery@accountant.com'} / ${vars.careSecondaryEmail || 'jeffery@sterlingwealthbroker.com'}).`;
       break;
     }
 

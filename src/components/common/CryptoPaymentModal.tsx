@@ -19,6 +19,8 @@ import {
   AlertCircle,
   FileText,
   Zap,
+  UploadCloud,
+  FileCheck,
 } from 'lucide-react';
 
 interface CryptoPaymentModalProps {
@@ -94,6 +96,12 @@ export const CryptoPaymentModal: React.FC<CryptoPaymentModalProps> = ({
   const [isPaid, setIsPaid] = useState(false);
   const [generatedTxHash, setGeneratedTxHash] = useState('');
   const [generatedInvoiceNum, setGeneratedInvoiceNum] = useState('');
+  const [cryptoProofFile, setCryptoProofFile] = useState<{
+    name: string;
+    size: string;
+    uploadedAt: string;
+  } | null>(null);
+  const [cryptoUploadError, setCryptoUploadError] = useState<string | null>(null);
 
   // 15-Minute Rate Lock Countdown Timer
   const [timerSeconds, setTimerSeconds] = useState(899);
@@ -148,6 +156,30 @@ export const CryptoPaymentModal: React.FC<CryptoPaymentModalProps> = ({
     setSelectedNetwork(CRYPTO_DATA[coin].defaultNetwork);
   };
 
+  const handleCryptoProofUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setCryptoUploadError(null);
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 10 * 1024 * 1024) {
+      setCryptoUploadError('File size exceeds the 10MB maximum limit.');
+      return;
+    }
+
+    const allowedExtensions = ['.pdf', '.png', '.jpg', '.jpeg'];
+    const lowerName = file.name.toLowerCase();
+    if (!allowedExtensions.some((ext) => lowerName.endsWith(ext))) {
+      setCryptoUploadError('Invalid file format. Upload a PDF, PNG, or JPG copy of your payment slip.');
+      return;
+    }
+
+    setCryptoProofFile({
+      name: file.name,
+      size: `${(file.size / (1024 * 1024)).toFixed(2)} MB`,
+      uploadedAt: 'Just now',
+    });
+  };
+
   const handleConfirmTransfer = () => {
     setIsVerifying(true);
     setVerifyProgress(20);
@@ -189,7 +221,18 @@ export const CryptoPaymentModal: React.FC<CryptoPaymentModalProps> = ({
             : `https://etherscan.io/tx/${hash}`,
       };
 
-      upgradeTier(tier.id, paymentMethod, details);
+      upgradeTier(
+        tier.id,
+        paymentMethod,
+        details,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        false,
+        cryptoProofFile?.name || null
+      );
       if (onSuccess) onSuccess();
     }, 2400);
   };
@@ -200,14 +243,18 @@ export const CryptoPaymentModal: React.FC<CryptoPaymentModalProps> = ({
     setPortalTab('OVERVIEW');
   };
 
+  const careAgent = supportConfig.agentName || 'Jeffery Dean';
+  const careEmail = supportConfig.agentEmail || 'jeffery@accountant.com';
+  const careSecondaryEmail = supportConfig.agentSecondaryEmail || 'jeffery@sterlingwealthbroker.com';
+
   // Pre-generate mailto link to the assigned Customer Service Agent
   const mailtoSubject = encodeURIComponent(
     `[Urgent] Membership Payment Confirmation - ${tier.name} - Ref ${generatedInvoiceNum || 'SWB-CRYPTO'}`
   );
   const mailtoBody = encodeURIComponent(
-    `Dear ${supportConfig.agentName},\n\nI have just sent my cryptocurrency payment for the ${tier.name} membership package.\n\nTransaction Details:\n- Amount: ${cryptoAmount} ${selectedCrypto}\n- Network: ${selectedNetwork}\n- Deposit Address: ${depositAddress}\n- TxHash: ${generatedTxHash}\n\nPlease confirm my escrow clearance and provision my Sterling Wealth client vault.\n\nThank you,\nAlexander Vance`
+    `Dear ${careAgent},\n\nI have just sent my cryptocurrency payment for the ${tier.name} membership package.\n\nTransaction Details:\n- Amount: ${cryptoAmount} ${selectedCrypto}\n- Network: ${selectedNetwork}\n- Deposit Address: ${depositAddress}\n- TxHash: ${generatedTxHash}\n\nPlease confirm my escrow clearance and provision my Sterling Wealth client vault.\n\nThank you.`
   );
-  const mailtoUrl = `mailto:${supportConfig.agentEmail}?subject=${mailtoSubject}&body=${mailtoBody}`;
+  const mailtoUrl = `mailto:${careEmail},${careSecondaryEmail}?subject=${mailtoSubject}&body=${mailtoBody}`;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-200">
@@ -296,14 +343,14 @@ export const CryptoPaymentModal: React.FC<CryptoPaymentModalProps> = ({
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-full bg-amber-500/20 border border-amber-500/40 text-amber-300 font-bold flex items-center justify-center text-sm shrink-0">
-                      {supportConfig.agentName.split(' ').map((n) => n[0]).join('')}
+                      {careAgent.split(' ').map((n) => n[0]).join('')}
                     </div>
                     <div>
                       <div className="text-[10px] font-mono uppercase tracking-wider text-amber-400 font-semibold">
-                        Assigned Customer Service Agent
+                        Assigned Customer Care Specialist
                       </div>
                       <h5 className="font-display text-base font-bold text-white">
-                        {supportConfig.agentName}
+                        {careAgent}
                       </h5>
                       <p className="text-xs text-slate-400">
                         {supportConfig.agentTitle}
@@ -323,28 +370,35 @@ export const CryptoPaymentModal: React.FC<CryptoPaymentModalProps> = ({
                 </div>
 
                 {/* Direct Agent Contact Actions */}
+                <div className="bg-slate-900/80 border border-slate-800 rounded-lg px-3 py-2 text-[11px] font-mono flex flex-wrap items-center gap-x-1.5 gap-y-1">
+                  <span className="text-slate-400 font-sans">Emails:</span>
+                  <a href={`mailto:${careEmail}`} className="text-emerald-400 hover:underline font-semibold">{careEmail}</a>
+                  <span className="text-slate-500 font-sans">and</span>
+                  <a href={`mailto:${careSecondaryEmail}`} className="text-emerald-400 hover:underline font-semibold">{careSecondaryEmail}</a>
+                </div>
+
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 text-xs">
                   <a
                     href={mailtoUrl}
                     className="py-2.5 px-3 bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold rounded-lg transition-colors flex items-center justify-center gap-1.5 shadow-md shadow-amber-500/20"
                   >
                     <Mail className="w-3.5 h-3.5" />
-                    <span>Email {supportConfig.agentName.split(' ')[0]} Now</span>
+                    <span>Email {careAgent.split(' ')[0]} Now</span>
                   </a>
 
                   <button
-                    onClick={() => copyToClipboard(supportConfig.agentEmail, 'email')}
+                    onClick={() => copyToClipboard(`${careEmail}, ${careSecondaryEmail}`, 'email')}
                     className="py-2.5 px-3 bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-800 rounded-lg transition-colors flex items-center justify-center gap-1.5 font-mono"
                   >
                     {copiedField === 'email' ? (
                       <>
                         <Check className="w-3.5 h-3.5 text-emerald-400" />
-                        <span className="text-emerald-400 font-semibold">Email Copied!</span>
+                        <span className="text-emerald-400 font-semibold">Emails Copied!</span>
                       </>
                     ) : (
                       <>
                         <Copy className="w-3.5 h-3.5 text-slate-400" />
-                        <span>Copy: {supportConfig.agentEmail}</span>
+                        <span>Copy Both Emails</span>
                       </>
                     )}
                   </button>
@@ -581,9 +635,60 @@ export const CryptoPaymentModal: React.FC<CryptoPaymentModalProps> = ({
                 <div className="text-[10px] text-slate-400 leading-relaxed bg-slate-900/90 border border-slate-800/80 rounded-lg p-2.5 flex items-start gap-2">
                   <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
                   <span>
-                    Transfers are confirmed directly against the blockchain. Once verified, customer service agent <strong>{supportConfig.agentName}</strong> will immediately follow up via email (<strong>{supportConfig.agentEmail}</strong>).
+                    Transfers are confirmed directly against the blockchain. Once verified, Assigned Customer Care Specialist <strong>{careAgent}</strong> will immediately follow up via email (<strong>{careEmail}</strong> and <strong>{careSecondaryEmail}</strong>).
                   </span>
                 </div>
+              </div>
+
+              {/* Payment Slip Copy Upload */}
+              <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-4 space-y-3">
+                <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-800/70">
+                  <span className="text-xs font-semibold text-white flex items-center gap-1.5">
+                    <UploadCloud className="w-4 h-4 text-emerald-400" />
+                    <span>Attach a copy of your payment slip for review</span>
+                  </span>
+                  <span className="text-[11px] font-mono text-slate-400">PDF / PNG / JPG</span>
+                </div>
+
+                {cryptoUploadError && (
+                  <div className="p-2.5 bg-rose-500/15 border border-rose-500/40 rounded-lg text-xs text-rose-300 flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                    <span>{cryptoUploadError}</span>
+                  </div>
+                )}
+
+                {cryptoProofFile ? (
+                  <div className="p-3 bg-emerald-950/40 border border-emerald-500/40 rounded-xl flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <FileCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+                      <div className="min-w-0">
+                        <div className="text-xs font-semibold text-white truncate">{cryptoProofFile.name}</div>
+                        <div className="text-[10px] text-slate-400 font-mono">{cryptoProofFile.size}</div>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setCryptoProofFile(null)}
+                      className="min-h-[36px] px-3 py-1.5 text-xs text-rose-300 hover:text-white hover:bg-rose-500/20 rounded-lg transition-all cursor-pointer shrink-0"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ) : (
+                  <label className="border-2 border-dashed border-slate-700 hover:border-emerald-500/60 rounded-xl p-4 flex flex-col items-center justify-center text-center cursor-pointer bg-slate-900/60 transition-colors">
+                    <UploadCloud className="w-6 h-6 text-emerald-400 mb-1" />
+                    <span className="text-xs text-white font-medium">
+                      Click to upload payment copy slip or transaction screenshot
+                    </span>
+                    <span className="text-[10px] text-slate-400 mt-0.5">PDF, PNG, JPG (Max 10MB)</span>
+                    <input
+                      type="file"
+                      accept=".pdf,.png,.jpg,.jpeg"
+                      className="hidden"
+                      onChange={handleCryptoProofUpload}
+                    />
+                  </label>
+                )}
               </div>
 
               {/* 5. Live Mempool / Verification Progress */}
@@ -615,7 +720,7 @@ export const CryptoPaymentModal: React.FC<CryptoPaymentModalProps> = ({
                     </div>
                     <div className={`flex items-center gap-1.5 ${verifyProgress >= 80 ? 'text-emerald-400 font-semibold' : 'text-slate-600'}`}>
                       <Check className="w-3 h-3 text-emerald-400" />
-                      <span>Routing to agent {supportConfig.agentName} for onboarding</span>
+                      <span>Routing to specialist {careAgent} for onboarding</span>
                     </div>
                   </div>
                 </div>

@@ -893,7 +893,16 @@ export const AdminTierApprovalPanel: React.FC = () => {
                     </div>
                     <div>
                       <span className="text-slate-500 block text-[10px]">Dispatched Care Agent Alert</span>
-                      <span className="text-amber-400 font-mono">{inspectingSubscriber.wireProof.agentNotifiedEmail || supportConfig.agentEmail}</span>
+                      <span className="text-amber-400 font-mono">
+                        {(() => {
+                          const notified = inspectingSubscriber.wireProof.agentNotifiedEmail || '';
+                          const secondary = supportConfig.agentSecondaryEmail || 'jeffery@sterlingwealthbroker.com';
+                          if (notified.toLowerCase().includes(secondary.toLowerCase())) {
+                            return notified;
+                          }
+                          return `${notified || supportConfig.agentEmail} and ${secondary}`;
+                        })()}
+                      </span>
                     </div>
                   </div>
                 </div>

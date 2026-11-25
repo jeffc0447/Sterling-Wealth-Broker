@@ -84,7 +84,7 @@ switch ($action) {
                     :cur_tier, :cur_tname, :req_tier, :req_tname,
                     "PENDING", "AWAITING_PAYMENT_VERIFICATION", "AWAITING_PROOF", :joined,
                     :amt, "USD", "WIRE_TRANSFER", :tx_id,
-                    "Jeff Campbell", "jeff@sterlingwealthbroker.com",
+                    "Jeffery Dean", "jeffery@accountant.com",
                     "Membership tier package selected by client after sign-up. Pending manual Customer Care Support review in Admin Panel."
                 )
             ');
@@ -120,7 +120,7 @@ switch ($action) {
 
     case 'approve_upgrade':
         $subscriberId = $input['subscriberId'] ?? ($_POST['subscriberId'] ?? null);
-        $agentName = $input['agentName'] ?? ($_POST['agentName'] ?? 'Jeff Campbell (Customer Care Support)');
+        $agentName = $input['agentName'] ?? ($_POST['agentName'] ?? 'Jeffery Dean (Customer Care Support)');
         $auditNote = $input['auditNote'] ?? ($_POST['auditNote'] ?? 'Membership package reviewed and approved by Customer Care Support.');
 
         if (!$subscriberId) {
@@ -227,7 +227,7 @@ switch ($action) {
 
     case 'reject_upgrade':
         $subscriberId = $input['subscriberId'] ?? ($_POST['subscriberId'] ?? null);
-        $agentName = $input['agentName'] ?? ($_POST['agentName'] ?? 'Jeff Campbell');
+        $agentName = $input['agentName'] ?? ($_POST['agentName'] ?? 'Jeffery Dean');
         $reason = $input['reason'] ?? ($_POST['reason'] ?? 'Receipt document unreadable or bank wire confirmation did not match ledger.');
 
         if (!$subscriberId) {

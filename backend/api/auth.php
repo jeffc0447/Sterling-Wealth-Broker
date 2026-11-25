@@ -263,7 +263,7 @@ switch ($action) {
                     NULL, "No Active Tier", :req_tier, :req_tname,
                     "PENDING", "AWAITING_PAYMENT_VERIFICATION", "AWAITING_PROOF", :joined,
                     :amt, "USD", "WIRE_TRANSFER", :tx_id,
-                    "Jeff Campbell", "jeff@sterlingwealthbroker.com",
+                    "Jeffery Dean", "jeffery@accountant.com",
                     "User selected this membership package during registration. Pending manual review and approval by Customer Care Support."
                 )
             ');

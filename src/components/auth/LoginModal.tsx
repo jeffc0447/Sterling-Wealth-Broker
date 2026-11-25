@@ -506,7 +506,7 @@ export const LoginModal: React.FC = () => {
 
               <div>
                 <label className="block text-xs font-medium text-slate-300 mb-1">
-                  Membership Tier Package <span className="text-slate-500 text-[11px]">(Optional · Manual Care Approval)</span>
+                  Membership Tier Package <span className="text-slate-500 text-[11px]">(Optional)</span>
                 </label>
                 <select
                   value={selectedRegTierId || ''}
@@ -518,13 +518,10 @@ export const LoginModal: React.FC = () => {
                   <option value="">Choose Later (After Signing Up)</option>
                   {tiers.map((tier) => (
                     <option key={tier.id} value={tier.id}>
-                      {tier.name} — ${tier.price.toLocaleString()}/{tier.period} (Customer Care Review)
+                      {tier.name} — ${tier.price.toLocaleString()}/{tier.period}
                     </option>
                   ))}
                 </select>
-                <p className="text-[10px] text-slate-400 mt-1">
-                  Tiers are never auto-assigned. Customer Care Support manually reviews and approves all packages in the Admin Panel.
-                </p>
               </div>
 
               <div className="pt-1">

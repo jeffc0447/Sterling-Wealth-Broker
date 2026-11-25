@@ -301,6 +301,7 @@ export interface BankWireDetails {
 export interface SupportAndCryptoConfig {
   agentName: string;
   agentEmail: string;
+  agentSecondaryEmail?: string;
   agentTitle: string;
   agentPhone: string;
   telegramHandle: string;
